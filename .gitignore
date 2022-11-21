@@ -1,0 +1,5 @@
+/.neptune/
+/AI/
+/trained_model/
+/untitled_project/
+*.pkl

@@ -32,7 +32,7 @@ DISPLAY = False
 
 parameters = {
     "debug": False,
-    "time_window": 10,
+    "time_window": 40,
     "layers": [384, 256, 384, 320, 128],
     "future_step": 1,
     "sampling": 1,
@@ -80,6 +80,7 @@ zi = data['Day'].values
 # get the index of the last racing day to be used as TestSet
 itemindex = np.where(zi == 6)
 test_index = itemindex[0][0]
+test_index += 10000
 
 # remove from the DataFrame the colum of the label
 data = data.drop(parameters['label'], axis=1)
@@ -140,15 +141,14 @@ early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
 def build_model(hp):
     # initialize the learning rate choices and optimizer
     lr = hp.Choice("learning_rate",
-                   values=[1e-3])
-                   # values=[1e-2, 1e-3, 1e-4])
+                   values=[1e-2, 1e-3, 1e-4])
     opt = tf.keras.optimizers.Adam(learning_rate=lr)
 
     model = tf.keras.models.Sequential()
     #model.add(Dense(X_train.shape[1], activation='linear'))
     model.add(LSTM(hp.Int('input_unit',min_value=32,max_value=512,step=32), return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
     # model.add(LSTM(32, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
-    for i in range(hp.Int('n_layers', 0, 5)):
+    for i in range(hp.Int('n_layers', 0, 1)):
         model.add(LSTM(hp.Int(f'lstm_{i}_units',min_value=32,max_value=512,step=32), return_sequences=True))
     model.add(LSTM(hp.Int('layer_2_neurons',min_value=32,max_value=512,step=32)))
     # model.add(keras.layers.Dropout(hp.Float('Dropout_rate',min_value=0,max_value=0.1,step=0.1)))
@@ -166,7 +166,7 @@ def build_model(hp):
 
 class MyTuner(keras_tuner.tuners.BayesianOptimization):
     def run_trial(self, trial, *args, **kwargs):
-        # kwargs['batch_size'] = trial.hyperparameters.Int('batch_size', 32, 64, step=32)
+        kwargs['batch_size'] = trial.hyperparameters.Int('batch_size', 32, 128, step=32)
         return super(MyTuner, self).run_trial(trial, *args, **kwargs)
 
 tuner = MyTuner(

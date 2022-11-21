@@ -64,15 +64,15 @@ if(DEBUG):
         "label": 'Pitch',
         "patience": 0,
         "val_split": 0,
-        "scaler": 'MinMaxScaler',  # Standard or MinMaxScaler
+        "scaler": 'Standard',  # Standard or MinMaxScaler
         "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
     }
     tags = ['LSTM_WS', 'DEBUG']
 else:
     parameters = {
         "debug": False,
-        "time_window": 30,
-        "layers": [384, 256, 384, 320, 128],
+        "time_window": 40,
+        "layers": [352, 512],
         "future_step": 1,
         "sampling": 1,
         "learning_rate": 0.001,
@@ -80,10 +80,9 @@ else:
         "n_epochs": 20,
         'dropout': 0,
         "label": 'Pitch',
-        "patience": 0,
+        "patience": 4,
         "val_split": 0,
-        "stateful": False,
-        "scaler": 'MinMaxScaler', #Standard or MinMaxScaler
+        "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer
         "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
     }
     tags = ['LSTM_WS']
@@ -116,6 +115,7 @@ zi = data['Day'].values
 # get the index of the last racing day to be used as TestSet
 itemindex = np.where(zi == 6)
 test_index = itemindex[0][0]
+test_index += 10000
 
 # remove from the DataFrame the colum of the label
 data = data.drop(parameters['label'], axis=1)
@@ -156,10 +156,13 @@ if parameters['val_split'] == 0:
 else:
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=parameters['val_split'], shuffle=False) # 0.25 x 0.8 = 0.2
 
-#Scale the 3 dataset
+# Scale the 3 dataset
 if parameters['scaler'] == 'Standard':
     from sklearn.preprocessing import StandardScaler
     scaler = StandardScaler()
+elif parameters['scaler'] == 'Normalizer':
+    from sklearn.preprocessing import Normalizer
+    scaler = Normalizer()
 else:
     from sklearn.preprocessing import MinMaxScaler
     scaler = MinMaxScaler(feature_range=(-1, 1))
@@ -209,7 +212,7 @@ def create_uncompiled_model():
         tmp_model.add(LSTM((int)((n_features + n_label) * 2 / 3)))
         tmp_model.add(Dense(n_label, activation='linear'))
     else:
-        tmp_model.add(LSTM(parameters['layers'][0], return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2]), stateful=parameters['stateful']))
+        tmp_model.add(LSTM(parameters['layers'][0], return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
         for i in range(1, len(parameters['layers'])-1, 1):
             tmp_model.add(LSTM(parameters['layers'][i], return_sequences=True))  # i
         tmp_model.add(LSTM(parameters['layers'][len(parameters['layers'])-1]))  # Layer 2
@@ -226,7 +229,7 @@ def create_model():
                   loss=parameters['loss_function'],
                   metrics=[tf.keras.metrics.RootMeanSquaredError(),
                            tf.keras.metrics.MeanAbsoluteError(),
-                           tf.keras.metrics.MeanSquaredError(),'accuracy'])
+                           tf.keras.metrics.MeanSquaredError()])
 
     # Log model summary
     if (NEPTUNE):
@@ -267,27 +270,6 @@ history = model.fit(X_train, y_train,
                 batch_size=parameters['batch_size'],
                 validation_data=(X_val, y_val),
                 callbacks=my_callbacks)
-
-
-    # if (NEPTUNE):
-    #     neptune_cbk = NeptuneCallback(
-    #         run=run,
-    #         base_namespace="metrics",  # optionally set a custom namespace name
-    #         log_model_diagram=True,
-    #         log_on_batch=True,
-    #     )
-    #     history = model.fit(X_train, y_train,
-    #                         epochs=parameters['n_epochs'],
-    #                         batch_size=parameters['batch_size'],
-    #                         validation_data=(X_val, y_val),
-    #                         callbacks=[early_stopping, neptune_cbk])
-    # else:
-    #     history = model.fit(X_train, y_train,
-    #                         epochs=parameters['n_epochs'],
-    #                         batch_size=parameters['batch_size'],
-    #                         validation_data=(X_val, y_val),
-    #                         callbacks=[early_stopping])
-
 
 
 print("--- %s seconds ---" % int(time() - start_at))
