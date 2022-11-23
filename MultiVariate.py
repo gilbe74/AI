@@ -29,6 +29,7 @@ import pydot
 import absl.logging
 import Utility as ut
 import DataRetrive as es
+from tensorflow.keras.regularizers import L1L2
 absl.logging.set_verbosity(absl.logging.ERROR)
 import errno
 
@@ -59,12 +60,13 @@ if(DEBUG):
         "future_step": 1,
         "sampling": 1,
         "learning_rate": 0.1,
-        "batch_size": 1,
+        "batch_size": 512,
         "n_epochs": 2,
         "label": 'Pitch',
         "patience": 0,
         "val_split": 0,
-        "scaler": 'Standard',  # Standard or MinMaxScaler
+        "activation": 'tanh', # tanh or relu
+        "scaler": 'MaxAbsScaler',  # Standard or MinMaxScaler or Normalizer or Robust or MaxAbsScaler
         "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
     }
     tags = ['LSTM_WS', 'DEBUG']
@@ -72,20 +74,23 @@ else:
     parameters = {
         "debug": False,
         "time_window": 40,
-        "layers": [352, 512],
+        "layers": [512, 224],
         "future_step": 1,
         "sampling": 1,
-        "learning_rate": 0.001,
-        "batch_size": 64,
-        "n_epochs": 20,
+        "learning_rate": 0.0012,
+        "l1": 0.01,
+        "l2": 0.0,
+        "batch_size": 32,
+        "n_epochs": 10,
         'dropout': 0,
         "label": 'Pitch',
         "patience": 4,
         "val_split": 0,
-        "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer
+        "activation": 'tanh', # tanh or relu
+        "scaler": 'MaxAbsScaler',  # Standard or MinMaxScaler or Normalizer or Robust or MaxAbsScaler
         "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
     }
-    tags = ['LSTM_WS']
+    tags = ['LSTM_WS','BEST_32_Tanh', 'TW=40']
 
 data = es.retriveDataSet(False)
 
@@ -207,15 +212,22 @@ def create_uncompiled_model():
     tmp_model = tf.keras.models.Sequential()
     if parameters['debug']:
         tmp_model.add(LSTM((n_features + 1),
-                       return_sequences=True,
-                       input_shape=(X_train.shape[1], X_train.shape[2])))
+                           return_sequences=True,
+                           activation=parameters['activation'],
+                           input_shape=(X_train.shape[1], X_train.shape[2])))
         tmp_model.add(LSTM((int)((n_features + n_label) * 2 / 3)))
         tmp_model.add(Dense(n_label, activation='linear'))
     else:
-        tmp_model.add(LSTM(parameters['layers'][0], return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
+        tmp_model.add(LSTM(parameters['layers'][0],
+                           return_sequences=True,
+                           activation=parameters['activation'],
+                           kernel_regularizer=tensorflow.keras.regularizers.L1L2(l1=parameters['l1'],
+                                                                                 l2=parameters['l2']),
+                           input_shape=(X_train.shape[1], X_train.shape[2])))
         for i in range(1, len(parameters['layers'])-1, 1):
             tmp_model.add(LSTM(parameters['layers'][i], return_sequences=True))  # i
-        tmp_model.add(LSTM(parameters['layers'][len(parameters['layers'])-1]))  # Layer 2
+        tmp_model.add(LSTM(parameters['layers'][len(parameters['layers'])-1],
+                           activation=parameters['activation']))  # Layer 2
         if parameters['dropout']>0:
             tmp_model.add(Dropout(parameters['dropout']))
         tmp_model.add(Dense(y_train.shape[1], activation='linear'))
@@ -463,8 +475,8 @@ if(PRINT):
     zoom_in(pltCoere, 200, 0.1) #20 seconds
 
     #Plot Avg
-    axs[0].plot(np.arange(range_history), ut.downsampling(y_test, 10), label='Human', color='yellow', alpha=0.8)
-    axs[0].plot(np.arange(range_future), ut.downsampling(y_test_pred_single, 10), label='Slow', color='pink', alpha=0.8)
+    # axs[0].plot(np.arange(range_history), ut.downsampling(y_test, 10), label='Human', color='yellow', alpha=0.8)
+    # axs[0].plot(np.arange(range_future), ut.downsampling(y_test_pred_single, 10), label='Slow', color='pink', alpha=0.8)
 
     zoom_in(pltCoere, 60, 0.1) #6 seconds
 

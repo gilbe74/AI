@@ -23,6 +23,7 @@ np.random.seed(19740429)
 tf.random.set_seed(51)
 policy = tf.keras.mixed_precision.Policy('mixed_float16')
 tf.keras.mixed_precision.set_global_policy(policy)
+from tensorflow.keras.regularizers import L1L2
 
 import absl.logging
 absl.logging.set_verbosity(absl.logging.ERROR)
@@ -38,13 +39,14 @@ parameters = {
     "sampling": 1,
     "learning_rate": 0.001,
     "batch_size": 64,
-    "n_epochs": 50,
+    "n_epochs": 20,
     'dropout': 0,
     "label": 'Pitch',
     "patience": 3,
     "val_split": 0,
-    "stateful": False,
-    "scaler": 'MinMaxScaler', #Standard or MinMaxScaler
+    "max_trials": 60,
+    "activation": 'tanh', #tanh or relu
+    "scaler": 'Standard', #Standard or MinMaxScaler
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
 }
 tags = ['LSTM_BO']
@@ -141,16 +143,21 @@ early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
 def build_model(hp):
     # initialize the learning rate choices and optimizer
     lr = hp.Choice("learning_rate",
-                   values=[1e-2, 1e-3, 1e-4])
+                   values=[5e-3, 1e-4, 1e-5, 5e-6])
     opt = tf.keras.optimizers.Adam(learning_rate=lr)
 
+    l1 = hp.Choice("l1", values=[0.0, 0.005, 0.01, 0.015])
+    l2 = hp.Choice("l2", values=[0.0, 0.005, 0.01, 0.015])
+
     model = tf.keras.models.Sequential()
-    #model.add(Dense(X_train.shape[1], activation='linear'))
-    model.add(LSTM(hp.Int('input_unit',min_value=32,max_value=512,step=32), return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
-    # model.add(LSTM(32, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
-    for i in range(hp.Int('n_layers', 0, 1)):
+    model.add(LSTM(hp.Int('input_unit',min_value=64,max_value=640,step=32),
+                   return_sequences=True,
+                   activation=parameters['activation'],  # tanh
+                   kernel_regularizer=L1L2(l1=l1, l2=l2),
+                   input_shape=(X_train.shape[1], X_train.shape[2])))
+    for i in range(hp.Int('n_layers', 0, 0)):
         model.add(LSTM(hp.Int(f'lstm_{i}_units',min_value=32,max_value=512,step=32), return_sequences=True))
-    model.add(LSTM(hp.Int('layer_2_neurons',min_value=32,max_value=512,step=32)))
+    model.add(LSTM(hp.Int('layer_2_neurons',min_value=64,max_value=576,step=32)))
     # model.add(keras.layers.Dropout(hp.Float('Dropout_rate',min_value=0,max_value=0.1,step=0.1)))
     model.add(Dense(y_train.shape[1], activation='linear'))
 
@@ -159,37 +166,28 @@ def build_model(hp):
                       loss=parameters['loss_function'],
                       metrics=[tf.keras.metrics.RootMeanSquaredError(),
                                tf.keras.metrics.MeanAbsoluteError(),
-                               tf.keras.metrics.MeanSquaredError(),
-                               'accuracy'])
+                               tf.keras.metrics.MeanSquaredError()])
     return model
 
 
 class MyTuner(keras_tuner.tuners.BayesianOptimization):
     def run_trial(self, trial, *args, **kwargs):
-        kwargs['batch_size'] = trial.hyperparameters.Int('batch_size', 32, 128, step=32)
+        kwargs['batch_size'] = trial.hyperparameters.Int('batch_size', 32, 96, step=32)
         return super(MyTuner, self).run_trial(trial, *args, **kwargs)
 
 tuner = MyTuner(
     build_model,
     objective='mean_squared_error',
-    max_trials=100,
+    max_trials=parameters['max_trials'],
     executions_per_trial=1,
-    overwrite = True
+    overwrite = True,
 )
-
-# tuner = BayesianOptimization(
-#     build_model,
-#     objective='mean_squared_error',
-#     max_trials=40,
-#     executions_per_trial=1,
-#     overwrite=True
-# )
 
 tuner.search(
     x=X_train,
     y=y_train,
-    epochs=20,
-    batch_size=parameters['batch_size'],
+    epochs=parameters['n_epochs'],
+    # batch_size=parameters['batch_size'],
     callbacks=[early_stopping],
     validation_data=(X_val, y_val)
 )

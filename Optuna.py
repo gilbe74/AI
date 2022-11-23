@@ -19,7 +19,7 @@ from tensorflow.keras.regularizers import L1L2
 import sklearn.metrics as metrics
 import optuna
 
-tags = ['LSTM_WS', 'TEST']
+tags = ['LSTM_WS', 'TEST', 'Standard', 'Tanh','40','FULL']
 run = neptune.init_run(
     project="gilberto.nobili/Optuna",
     api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIyNmNjMTI3Ni02ZjkwLTRiMTgtOGI5Zi03NzczMWJlODIwYTIifQ==",
@@ -36,7 +36,9 @@ parameters = {
     'dropout': 0,
     "label": 'Pitch',
     "val_split": 0,
-    "max_trials": 40,
+    "max_trials": 60,
+    "patience": 3,
+    "activation": 'tanh', #tanh or relu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
 }
@@ -139,18 +141,19 @@ def model_performance(model, X=X_val, y=y_val):
 
 # 1. Define an objective function to be maximized.
 def objective(trial):
+    tf.keras.backend.clear_session()
+
     if parameters['max_hidden_layers'] > parameters['min_hidden_layers']:
         n_layers = trial.suggest_int("n_layers", parameters['min_hidden_layers'], parameters['max_hidden_layers'])
     else:
         n_layers = parameters['max_hidden_layers']
 
-    lr = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
+    lr = trial.suggest_float('learning_rate', 5e-6, 5e-3, log=True)
 
-    l1 = trial.suggest_categorical("kernel_regularizer_l1", [0.0, 0.01])
-    l2 = trial.suggest_categorical("kernel_regularizer_l2", [0.0, 0.01])
+    l1 = trial.suggest_categorical("kernel_regularizer_l1", [0.0, 0.005, 0.01, 0.015])
+    l2 = trial.suggest_categorical("kernel_regularizer_l2", [0.0, 0.005, 0.01, 0.015])
 
-    batch_size = 64 #trial.suggest_categorical("batch_size", [32, 64])
-    # epochs = trial.suggest_int("epochs", 10, parameters['n_epochs'], step=5, log=False)
+    batch_size = trial.suggest_categorical("batch_size", [32, 64, 96])
     # batchsize = trial.suggest_int("batchsize", 32, 128, step=32, log=False)
 
     if parameters['dropout'] > 0:
@@ -158,18 +161,21 @@ def objective(trial):
     else:
         recurrent_dropout = 0.0
 
-    input_units = trial.suggest_int("input_units", 32, 512, 32)
-    output_units = trial.suggest_int("output_units", 32, 512, 32)
+    input_units = trial.suggest_int("input_units", 64, 640, 32)
+    output_units = trial.suggest_int("output_units", 64, 576, 32)
 
     model = tf.keras.models.Sequential()
     model.add(LSTM(units=input_units,
                    return_sequences=True,
+                   activation=parameters['activation'],  # tanh
                    kernel_regularizer=L1L2(l1=l1, l2=l2),
                    recurrent_dropout=recurrent_dropout,
                    input_shape=(X_train.shape[1], X_train.shape[2])))
     for i in range(n_layers):
         num_hidden = trial.suggest_int(f'n_units_l{i}', 32, 512, 32)
-        model.add(LSTM(num_hidden, return_sequences=True))
+        model.add(LSTM(num_hidden,
+                       return_sequences=True,
+                       activation=parameters['activation']))
         # p = trial.suggest_float("dropout_l{}".format(i), 0.0, parameters['dropout'])
         # if(p>0):
         #     model.add(Dropout(p))
@@ -180,16 +186,24 @@ def objective(trial):
                   metrics=[tf.keras.metrics.RootMeanSquaredError(), tf.keras.metrics.MeanAbsoluteError(),
                            tf.keras.metrics.MeanSquaredError()])
 
+    # Create callbacks for early stopping and pruning.
+    callbacks = [
+        tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+                                         patience=parameters['patience'],
+                                         mode='min',
+                                         restore_best_weights=True),
+        TFKerasPruningCallback(trial, "val_loss"),
+    ]
     try:
         model.fit(
             X_train,
             y_train,
             validation_data=(X_val, y_val),
-            shuffle=True,
+            shuffle=False,
             batch_size=batch_size,
             epochs=parameters['n_epochs'],
             verbose=True,
-            callbacks=[TFKerasPruningCallback(trial, "val_loss")]
+            callbacks=callbacks
         )
     except:
         print("An exception occurred on Model Fit")
