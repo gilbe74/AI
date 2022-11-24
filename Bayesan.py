@@ -34,7 +34,8 @@ DISPLAY = False
 parameters = {
     "debug": False,
     "time_window": 40,
-    "layers": [384, 256, 384, 320, 128],
+    "min_hidden_layers": 0,
+    "max_hidden_layers": 0,
     "future_step": 1,
     "sampling": 1,
     "learning_rate": 0.001,
@@ -141,6 +142,13 @@ early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
                                                   restore_best_weights=True)
 
 def build_model(hp):
+    tf.keras.backend.clear_session()
+
+    if parameters['max_hidden_layers'] > parameters['min_hidden_layers']:
+        n_layers = hp.Int('n_layers', parameters['mai_hidden_layers'], parameters['max_hidden_layers'])
+    else:
+        n_layers = 0
+
     # initialize the learning rate choices and optimizer
     lr = hp.Choice("learning_rate",
                    values=[5e-3, 1e-4, 1e-5, 5e-6])
@@ -155,7 +163,7 @@ def build_model(hp):
                    activation=parameters['activation'],  # tanh
                    kernel_regularizer=L1L2(l1=l1, l2=l2),
                    input_shape=(X_train.shape[1], X_train.shape[2])))
-    for i in range(hp.Int('n_layers', 0, 0)):
+    for i in range(n_layers):
         model.add(LSTM(hp.Int(f'lstm_{i}_units',min_value=32,max_value=512,step=32), return_sequences=True))
     model.add(LSTM(hp.Int('layer_2_neurons',min_value=64,max_value=576,step=32)))
     # model.add(keras.layers.Dropout(hp.Float('Dropout_rate',min_value=0,max_value=0.1,step=0.1)))

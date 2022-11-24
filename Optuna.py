@@ -17,6 +17,7 @@ import pandas as pd
 import neptune.new as neptune
 from tensorflow.keras.regularizers import L1L2
 import sklearn.metrics as metrics
+from tensorflow.keras.activations import elu, relu, tanh
 import optuna
 
 tags = ['LSTM_WS', 'TEST', 'Standard', 'Tanh','40','FULL']
@@ -32,13 +33,13 @@ parameters = {
     "max_hidden_layers": 0,
     "future_step": 1,
     "sampling": 1,
-    "n_epochs": 20,
+    "n_epochs": 25,
     'dropout': 0,
     "label": 'Pitch',
     "val_split": 0,
     "max_trials": 60,
     "patience": 3,
-    "activation": 'tanh', #tanh or relu
+    "activation": 'tanh', #tanh or relu or elu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
 }
@@ -138,6 +139,12 @@ def model_performance(model, X=X_val, y=y_val):
         print("R2 Testing FAILS")
         return DEFAULT_RETURN
 
+if parameters['activation'] == "relu":
+    activation = relu
+elif parameters['activation'] == "elu":
+    activation = elu
+else:
+    activation = tanh
 
 # 1. Define an objective function to be maximized.
 def objective(trial):
@@ -148,26 +155,26 @@ def objective(trial):
     else:
         n_layers = parameters['max_hidden_layers']
 
-    lr = trial.suggest_float('learning_rate', 5e-6, 5e-3, log=True)
+    lr = trial.suggest_float('learning_rate', 1e-6, 1e-3, log=True)
 
     l1 = trial.suggest_categorical("kernel_regularizer_l1", [0.0, 0.005, 0.01, 0.015])
     l2 = trial.suggest_categorical("kernel_regularizer_l2", [0.0, 0.005, 0.01, 0.015])
 
-    batch_size = trial.suggest_categorical("batch_size", [32, 64, 96])
-    # batchsize = trial.suggest_int("batchsize", 32, 128, step=32, log=False)
+    # batch_size = trial.suggest_categorical("batch_size", [32, 64, 96])
+    batch_size = trial.suggest_int("batchsize", 32, 64, step=32, log=False)
 
     if parameters['dropout'] > 0:
-        recurrent_dropout = trial.suggest_float('recurrent_dropout', 0.0, parameters['dropout'], log=True)
+        recurrent_dropout = trial.suggest_float('recurrent_dropout', 0.0, parameters['dropout'], step=0.1)
     else:
         recurrent_dropout = 0.0
 
-    input_units = trial.suggest_int("input_units", 64, 640, 32)
-    output_units = trial.suggest_int("output_units", 64, 576, 32)
+    input_units = trial.suggest_int("input_units", 128, 768, 64)
+    output_units = trial.suggest_int("output_units", 64, 384, 32)
 
     model = tf.keras.models.Sequential()
     model.add(LSTM(units=input_units,
                    return_sequences=True,
-                   activation=parameters['activation'],  # tanh
+                   activation=activation,
                    kernel_regularizer=L1L2(l1=l1, l2=l2),
                    recurrent_dropout=recurrent_dropout,
                    input_shape=(X_train.shape[1], X_train.shape[2])))
