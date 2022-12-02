@@ -5,6 +5,7 @@ import tensorflow.keras.layers
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Dropout
+from keras import Input, Model
 from tensorflow.keras.activations import elu, relu, tanh
 from tensorflow.keras.layers import Bidirectional
 import keras_tuner
@@ -22,6 +23,7 @@ import warnings
 
 from tensorflow.python.keras.layers import RepeatVector
 from tensorflow.python.keras.layers.wrappers import TimeDistributed
+from tensorflow.python.keras.regularizers import L1L2
 
 warnings.simplefilter("ignore", UserWarning)
 policy = tf.keras.mixed_precision.Policy('mixed_float16')
@@ -59,24 +61,24 @@ NEPTUNE_TOKEN = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJ
 
 parameters = {
     "debug": False,
-    "time_window": 40,
-    "layers": [640,64],
+    "time_window": 100,
+    "layers": [768,128],
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 5e-6,
+    "learning_rate": 1e-3,
     "l1": 0.0,
-    "l2": 0.015,
+    "l2": 0.01,
     "batch_size": 64,
     "n_epochs": 40,
     'dropout': 0,
     "label": 'Pitch',
-    "patience": 3,
+    "patience": 5,
     "val_split": 0,
     "activation": 'tanh', # tanh or relu or elu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer or Robust or MaxAbsScaler
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
 }
-tags = ['LSTM_WS', 'TW=40', "Standard","tanh", "Best_Keras", "Stacked"]
+tags = ['LSTM_WS', 'TW=40', "Standard","tanh", "Best_Optuna", "State", "lr_adapt"]
 
 data = es.retriveDataSet(False)
 
@@ -113,7 +115,7 @@ data = data.drop(parameters['label'], axis=1)
 Xi = data.values
 yi = yi.reshape((len(yi), 1))
 
-data.info()
+# data.info()
 
 
 TEST_SPLIT = 1 - (test_index / len(Xi)) # Test Split to last racing day
@@ -193,49 +195,79 @@ elif parameters['activation'] == "elu":
 else:
     activation = tanh
 
-# # define model
-def create_uncompiled_model():
-    tmp_model = tf.keras.models.Sequential()
-    tmp_model.add(LSTM(parameters['layers'][0], return_sequences=True,
-                       activation=activation,
-                       recurrent_dropout=parameters['dropout'],
-                       kernel_regularizer=tensorflow.keras.regularizers.L1L2(l1=parameters['l1'], l2=parameters['l2']),
-                       input_shape=(X_train.shape[1], X_train.shape[2])))
-    tmp_model.add(LSTM(parameters['layers'][len(parameters['layers'])-1]))  # Layer 2
-    tmp_model.add(Dense(y_train.shape[1], activation='linear'))
-    return tmp_model
-
-def create_uncompiled_model_bidirectional_seq2seq_mine():
-    tmp_model = tf.keras.models.Sequential()
-    tmp_model.add(Bidirectional(LSTM(X_train.shape[1]), input_shape = (X_train.shape[1], X_train.shape[2])))
-    tmp_model.add(RepeatVector(X_train.shape[1]))
-    tmp_model.add(Bidirectional(LSTM(X_train.shape[1])))
-    tmp_model.add(Dense(1))
-    return tmp_model
-
-def create_uncompiled_model_bidirectional_seq2seq():
-    tmp_model = tf.keras.models.Sequential()
-    tmp_model.add(Bidirectional(LSTM(X_train.shape[1]), input_shape = (X_train.shape[1], X_train.shape[2])))
-    tmp_model.add(RepeatVector(X_train.shape[1]))
-    tmp_model.add(Bidirectional(LSTM(X_train.shape[1], return_sequences = True)))
-    tmp_model.add(TimeDistributed(Dense(X_train.shape[1], activation = elu)))
-    tmp_model.add(TimeDistributed(Dense(1)))
-    return tmp_model
+# Number history timestamps
+n_timestamps = X_train.shape[1]
+# Number of input features to the model
+n_features = X_train.shape[2]
+# Number of output timestamps
+n_future = y_train.shape[1]
 
 def create_uncompiled_model_bidirectional():
     tmp_model = tf.keras.models.Sequential()
-    tmp_model.add(Bidirectional(LSTM(parameters['layers'][0], activation=activation), input_shape=(X_train.shape[1], X_train.shape[2])))
-    tmp_model.add(Dense(1))
+    tmp_model.add(Bidirectional(LSTM(parameters['layers'][0], activation=parameters['activation']), input_shape=(n_timestamps, n_features)))
+    tmp_model.add(Dense(n_future, activation='linear'))
+    return tmp_model
+def create_uncompiled_model_ReturnState():
+    n_timesteps = X_train.shape[1]
+    n_features = X_train.shape[2]
+    input = Input(shape=(n_timesteps, n_features))
+
+    lstm1 = LSTM(parameters['layers'][0], return_state=True)
+    LSTM_output, state_h, state_c = lstm1(input)
+    states = [state_h, state_c]
+
+    repeat = RepeatVector(n_timesteps) #1
+    LSTM_output = repeat(LSTM_output)
+
+    lstm2 = LSTM(parameters['layers'][0], return_sequences=True)
+    all_state_h = lstm2(LSTM_output, initial_state=states)
+
+    # dense = TimeDistributed(Dense(y_train.shape[1], activation='linear'))
+    # output = dense(all_state_h)
+
+    lstm3 = LSTM(parameters['layers'][1], return_sequences=False)
+    all_state_d = lstm3(all_state_h)
+
+    dense = Dense(y_train.shape[1], activation='linear')
+    output = dense(all_state_d)
+
+    tmp_model = Model(input, output, name='model_LSTM_return_state')
+    return tmp_model
+
+def create_uncompiled_model_StackedMulti():
+    tmp_model = tf.keras.models.Sequential()
+    tmp_model.add(LSTM(640, activation=activation, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
+    tmp_model.add(LSTM(384, activation=activation, return_sequences=True))
+    tmp_model.add(LSTM(384, activation=activation, return_sequences=True))
+    tmp_model.add(LSTM(64, activation=activation))
+    tmp_model.add(Dense(y_train.shape[1], activation='linear'))
+    return tmp_model
+
+def create_uncompiled_model_stacked():
+    tmp_model = tf.keras.models.Sequential()
+    tmp_model.add(LSTM(units=640,
+                       return_sequences=True,
+                       activation='tanh',
+                       recurrent_dropout=0.0,
+                       kernel_regularizer=L1L2(l1=0.0, l2=0.0),
+                       input_shape=(n_timestamps, n_features)))
+    tmp_model.add(LSTM(256))
+    tmp_model.add(Dense(n_future, activation='linear'))
     return tmp_model
 
 def create_uncompiled_model_vanilla():
     tmp_model = tf.keras.models.Sequential()
-    tmp_model.add(LSTM(parameters['layers'][0], activation=activation, input_shape=(X_train.shape[1], X_train.shape[2])))
-    tmp_model.add(Dense(1))
+    tmp_model.add(LSTM(units=640,
+                       return_sequences=False,
+                       activation='tanh',
+                       recurrent_dropout=0.0,
+                       kernel_regularizer=L1L2(l1=0.0, l2=0.015),
+                       input_shape=(n_timestamps, n_features)))
+    tmp_model.add(Dense(n_future))
     return tmp_model
 
 def create_model():
-    tmp_model = create_uncompiled_model()
+    tmp_model = create_uncompiled_model_ReturnState()
 
     tmp_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=parameters['learning_rate']),
                   loss=parameters['loss_function'],
@@ -258,6 +290,27 @@ early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
                                                   mode='min',
                                                   restore_best_weights=True)
 
+reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
+                                                 factor=0.2,
+                                                 patience=2,
+                                                 verbose=1,
+                                                 mode='min',
+                                                 min_delta=0.001,
+                                                 cooldown=0,
+                                                 min_lr=1e-7)
+
+# class myLearningCallback(tf.keras.callbacks.Callback):
+#     def __init__(self):
+#         super(myLearningCallback, self).__init__()
+#
+#     def on_epoch_end(self, epoch, logs={}):
+#         if not hasattr(self.model.optimizer, "lr"):
+#             print('Optimizer must have a "lr" attribute.')
+#         # Get the current learning rate from model's optimizer.
+#         lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
+#         print("\nEpoch %05d: Learning rate is %6.4f." % (epoch, lr))
+# lr_calback_object = myLearningCallback()
+
 if NEPTUNE:
     neptune_cbk = NeptuneCallback(
         run=run,
@@ -267,14 +320,15 @@ if NEPTUNE:
     )
 
     if parameters['patience'] > 0:
-        my_callbacks = [early_stopping, neptune_cbk]
+        my_callbacks = [early_stopping, neptune_cbk, reduce_lr]
     else:
         my_callbacks = [neptune_cbk]
 else:
     if parameters['patience'] > 0:
-        my_callbacks = [early_stopping]
+        my_callbacks = [early_stopping, reduce_lr]
     else:
         my_callbacks = []
+
 
 
 history = model.fit(X_train, y_train,
@@ -299,14 +353,16 @@ if(PRINT):
 
     # Evaluate the model on the test data using `evaluate`
     test_results = model.evaluate(X_test, y_test, batch_size=parameters['batch_size'])
+
+    # Log predictions as table
+    test_pred = model.predict(X_test)
+
     # test_results = model.evaluate(X_test, y_test, batch_size=1)
     if (NEPTUNE):
         for j, metric in enumerate(test_results):
             run['test/scores/{}'.format(model.metrics_names[j])] = metric
-
-    # Log predictions as table
-    test_pred = model.predict(X_test)
-    print("Test loss, rmse, mae, mse:", test_results)
+            print("Metrics {}".format(model.metrics_names[j]), round(metric, 3))
+    # print("Test loss, rmse, mae, mse:", test_results)
 
     print("Error Valutation")
     import math

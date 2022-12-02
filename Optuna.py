@@ -7,8 +7,10 @@ from optuna.trial import TrialState
 #     plot_param_importances
 from optuna.visualization import plot_optimization_history, plot_intermediate_values, plot_contour, \
     plot_param_importances
+from keras.layers import PReLU, RepeatVector, TimeDistributed
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import Dense
+from keras import Input, Model
 from tensorflow.keras.layers import Dropout
 import Utility as ut
 import DataRetrive as es
@@ -20,7 +22,7 @@ import sklearn.metrics as metrics
 from tensorflow.keras.activations import elu, relu, tanh
 import optuna
 
-tags = ['LSTM_WS', 'TEST', 'Standard', 'Tanh','40','FULL']
+tags = ['LSTM_WS', 'TEST', 'Standard', 'Tanh', '100', 'Multi', 'LR']
 run = neptune.init_run(
     project="gilberto.nobili/Optuna",
     api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIyNmNjMTI3Ni02ZjkwLTRiMTgtOGI5Zi03NzczMWJlODIwYTIifQ==",
@@ -29,22 +31,24 @@ run = neptune.init_run(
 
 parameters = {
     "time_window": 40,
-    "min_hidden_layers": 0,
-    "max_hidden_layers": 0,
+    "min_hidden_layers": 2,
+    "max_hidden_layers": 2,
     "future_step": 1,
     "sampling": 1,
-    "n_epochs": 25,
+    "learning_rate": 1e-3,
+    "n_epochs": 30,
     'dropout': 0,
     "label": 'Pitch',
     "val_split": 0,
-    "max_trials": 60,
-    "patience": 3,
-    "activation": 'tanh', #tanh or relu or elu
+    "max_trials": 30,
+    "patience": 5,
+    "optimizer": 'adam', #adam
+    "activation": 'tanh',  # tanh or relu or elu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
 }
 
-DEFAULT_RETURN = 0.1
+DEFAULT_RETURN = 0.4
 
 data = es.retriveDataSet(False)
 
@@ -97,12 +101,15 @@ else:
 # Scale the 3 dataset
 if parameters['scaler'] == 'Standard':
     from sklearn.preprocessing import StandardScaler
+
     scaler = StandardScaler()
 elif parameters['scaler'] == 'Normalizer':
     from sklearn.preprocessing import Normalizer
+
     scaler = Normalizer()
 else:
     from sklearn.preprocessing import MinMaxScaler
+
     scaler = MinMaxScaler(feature_range=(-1, 1))
 
 X_train = scaler.fit_transform(X_train)
@@ -139,12 +146,14 @@ def model_performance(model, X=X_val, y=y_val):
         print("R2 Testing FAILS")
         return DEFAULT_RETURN
 
+
 if parameters['activation'] == "relu":
     activation = relu
 elif parameters['activation'] == "elu":
     activation = elu
 else:
     activation = tanh
+
 
 # 1. Define an objective function to be maximized.
 def objective(trial):
@@ -155,21 +164,22 @@ def objective(trial):
     else:
         n_layers = parameters['max_hidden_layers']
 
-    lr = trial.suggest_float('learning_rate', 1e-6, 1e-3, log=True)
-
-    l1 = trial.suggest_categorical("kernel_regularizer_l1", [0.0, 0.005, 0.01, 0.015])
-    l2 = trial.suggest_categorical("kernel_regularizer_l2", [0.0, 0.005, 0.01, 0.015])
+    l1 = trial.suggest_categorical("kernel_regularizer_l1", [0.0, 0.01])
+    l2 = trial.suggest_categorical("kernel_regularizer_l2", [0.0, 0.01])
+   # l1 = 0.0
+    # l2 = 0.0
 
     # batch_size = trial.suggest_categorical("batch_size", [32, 64, 96])
-    batch_size = trial.suggest_int("batchsize", 32, 64, step=32, log=False)
+    batch_size = 64 #trial.suggest_int("batchsize", 32, 64, step=32, log=False)
 
     if parameters['dropout'] > 0:
         recurrent_dropout = trial.suggest_float('recurrent_dropout', 0.0, parameters['dropout'], step=0.1)
     else:
         recurrent_dropout = 0.0
 
-    input_units = trial.suggest_int("input_units", 128, 768, 64)
-    output_units = trial.suggest_int("output_units", 64, 384, 32)
+    input_units = trial.suggest_int("input_units", 512, 768, 128)
+    output_units = trial.suggest_int("output_units", 128, 256, 128)
+    # dense_units = trial.suggest_int("dense_units", 64, 128, 64)
 
     model = tf.keras.models.Sequential()
     model.add(LSTM(units=input_units,
@@ -179,17 +189,31 @@ def objective(trial):
                    recurrent_dropout=recurrent_dropout,
                    input_shape=(X_train.shape[1], X_train.shape[2])))
     for i in range(n_layers):
-        num_hidden = trial.suggest_int(f'n_units_l{i}', 32, 512, 32)
-        model.add(LSTM(num_hidden,
-                       return_sequences=True,
-                       activation=parameters['activation']))
+        num_hidden = trial.suggest_int(f'n_units_l{i}', 256, 768, 256)
+        model.add(LSTM(num_hidden, return_sequences=True))
         # p = trial.suggest_float("dropout_l{}".format(i), 0.0, parameters['dropout'])
         # if(p>0):
         #     model.add(Dropout(p))
-    model.add(LSTM(units=output_units))
+    # model.add(TimeDistributed(Dense(y_train.shape[1], activation='linear')))
+    model.add(LSTM(units=output_units, return_sequences=False))
+    model.add(Dense(units=64, activation='linear'))
     model.add(Dense(y_train.shape[1], activation='linear'))
 
-    model.compile(loss='huber_loss', optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+
+    if parameters['optimizer'] == 'adam':
+        # lr = 0.001 #default
+        lr = parameters['learning_rate']
+        # lr = trial.suggest_float('learning_rate', 1e-6, 1e-2, log=True)
+        # lr = trial.suggest_categorical("learning_rate", [1e-5, 5e-6])
+        opti = tf.keras.optimizers.Adam(learning_rate=lr)
+    else:
+        # lr = 0.01 #default
+        lr = trial.suggest_categorical("learning_rate", [0.01, 0.001])
+        momentum = trial.suggest_categorical("momentum", [0.9, 0.8, 0.7]) #0.9 default
+        nesterov = True #trial.suggest_categorical("nesterov", [True, False])
+        opti = tf.keras.optimizers.SGD(learning_rate=lr, decay=1e-6, momentum=momentum, nesterov=nesterov)
+
+    model.compile(loss='huber_loss', optimizer=opti,
                   metrics=[tf.keras.metrics.RootMeanSquaredError(), tf.keras.metrics.MeanAbsoluteError(),
                            tf.keras.metrics.MeanSquaredError()])
 
@@ -200,6 +224,14 @@ def objective(trial):
                                          mode='min',
                                          restore_best_weights=True),
         TFKerasPruningCallback(trial, "val_loss"),
+        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
+                                                         factor=0.2,
+                                                         patience=2,
+                                                         verbose=1,
+                                                         mode='min',
+                                                         min_delta=0.0001,
+                                                         cooldown=0,
+                                                         min_lr=2e-6)
     ]
     try:
         model.fit(
@@ -217,8 +249,9 @@ def objective(trial):
         return DEFAULT_RETURN
 
     # Evaluate the model accuracy on the validation set.
-    # score = model.evaluate(X_val, y_val, verbose=1)
-    return model_performance(model)  # score[1]
+    score = model.evaluate(X_val, y_val, verbose=1)
+    return score[3]
+    # return model_performance(model)  # score[1]
 
 
 import neptune.new.integrations.optuna as optuna_utils
@@ -234,7 +267,7 @@ neptune_callback = optuna_utils.NeptuneCallback(run,
 
 # 3. Create a study object and optimize the objective function.
 # study = optuna.create_study(direction='maximize', pruner=optuna.pruners.SuccessiveHalvingPruner())
-study = optuna.create_study(direction='maximize', pruner=optuna.pruners.MedianPruner())
+study = optuna.create_study(direction='minimize', pruner=optuna.pruners.MedianPruner())
 print(f"Sampler is {study.sampler.__class__.__name__}")
 study.optimize(objective, n_trials=parameters['max_trials'], callbacks=[neptune_callback])
 
