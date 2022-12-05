@@ -20,6 +20,7 @@ from numpy import mean , concatenate
 from numpy import array
 from pickle import dump,load
 import warnings
+import glob
 
 from tensorflow.python.keras.layers import RepeatVector
 from tensorflow.python.keras.layers.wrappers import TimeDistributed
@@ -35,21 +36,13 @@ import glob
 import pydot
 import absl.logging
 import Utility as ut
-import DataRetrive as es
+import Callbacks as cb
 absl.logging.set_verbosity(absl.logging.ERROR)
 import errno
 
-def set_seed(sd=19740429):
-    from numpy.random import seed
-    import random as rn
-    ## numpy random seed
-    seed(sd)
-    ## core python's random number
-    rn.seed(sd)
-    ## tensor flow's random number
-    tensorflow.random.set_seed(sd)
 
-set_seed()
+
+ut.set_seed()
 
 SAVE_SCORE = True
 NEPTUNE = True
@@ -61,120 +54,136 @@ NEPTUNE_TOKEN = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJ
 
 parameters = {
     "debug": False,
-    "time_window": 100,
-    "layers": [768,128],
+    "time_window": 40,
+    "layers": [300,128],
     "future_step": 1,
     "sampling": 1,
     "learning_rate": 1e-3,
     "l1": 0.0,
     "l2": 0.01,
     "batch_size": 64,
-    "n_epochs": 40,
+    "n_epochs": 50,
     'dropout': 0,
     "label": 'Pitch',
-    "patience": 5,
+    "patience": 6,
     "val_split": 0,
+    "filter_in": 'wiener',  # kalman wiener simple none
+    "filter_out": 'kalman',  # kalman wiener simple none
+    "optimizer": 'adam',  # adam
     "activation": 'tanh', # tanh or relu or elu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer or Robust or MaxAbsScaler
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
 }
-tags = ['LSTM_WS', 'TW=40', "Standard","tanh", "Best_Optuna", "State", "lr_adapt"]
+tags = ['LSTM_WS', 'TW=100', "Standard","tanh", "Best", "Bidirectional", "lr_adapt"]
 
-data = es.retriveDataSet(False)
+# data = es.retriveDataSet(False)
+#
+# if(data is None):
+#     data = es.getDataSet()
+#     es.saveDataSet(data)
+# if(data.empty):
+#     print('Is the DataFrame empty!')
+#     raise SystemExit
+#
+# # ['Datetime','SinkMin_AP','YawRate','Bs','Heel','Pitch', 'Lwy', 'Tws']
+# data=data.drop(['Datetime','Bs','YawRate','Heel', 'Lwy','Tws', 'SinkMin_AP'], axis=1)
+# data.dropna(inplace=True)
+# # data.info()
+#
+# if parameters['sampling'] > 1:
+#     data = data.rolling(parameters['sampling']).mean()
+#     data = data.iloc[::parameters['sampling'], :]
+#     data.dropna(inplace=True)
+#
+# # corr_matrix = data.corr()
+#
+# # get the label array
+# yi = data[parameters['label']].values
+# # get the days of sailing
+# zi = data['Day'].values
+# # get the index of the last racing day to be used as TestSet
+# itemindex = np.where(zi == 6)
+# test_index = itemindex[0][0]
+# test_index += 10000
+#
+# # remove from the DataFrame the colum of the label
+# data = data.drop(parameters['label'], axis=1)
+# Xi = data.values
+# yi = yi.reshape((len(yi), 1))
+#
+# # data.info()
+#
+#
+# TEST_SPLIT = 1 - (test_index / len(Xi)) # Test Split to last racing day
+#
+# from sklearn.model_selection import train_test_split
+# X_train, X_test, y_train, y_test = train_test_split(Xi, yi, test_size=TEST_SPLIT, shuffle=False)
+#
+# if(PRINT_FULLDATA):
+#     import matplotlib.pyplot as pltDataSet
+#     range_history = len(yi)
+#     range_future = len(y_test)
+#     range_forecast = list(range(test_index, range_history))
+#     pltDataSet.figure(figsize=(10, 5))
+#     pltDataSet.plot(np.arange(range_history), np.array(yi), label=parameters['label'])
+#     pltDataSet.plot(np.arange(len(data['Day'].values)), data['Day'].values, label='Days')
+#     pltDataSet.plot(np.arange(range_history), ut.downsampling(yi, 50), label='Human Action', color='red', alpha=0.5)
+#     pltDataSet.plot(range_forecast, np.array(y_test), label='TestSet')
+#     pltDataSet.title("Full DataSet")
+#     pltDataSet.xlabel('Time step' ,  fontsize=18)
+#     pltDataSet.legend(loc='upper right')
+#     pltDataSet.ylabel('Values', fontsize=18)
+#     pltDataSet.legend()
+#     pltDataSet.show()
+#
+# # Scale the 3 dataset
+# if parameters['scaler'] == 'Standard':
+#     from sklearn.preprocessing import StandardScaler
+#     scaler = StandardScaler()
+# elif parameters['scaler'] == 'Normalizer':
+#     from sklearn.preprocessing import Normalizer
+#     scaler = Normalizer()
+# elif parameters['scaler'] == 'Robust':
+#     from sklearn.preprocessing import RobustScaler
+#     scaler = RobustScaler()
+# elif parameters['scaler'] == 'MaxAbsScaler':
+#     from sklearn.preprocessing import MaxAbsScaler
+#     scaler = MaxAbsScaler()
+# else:
+#     from sklearn.preprocessing import MinMaxScaler
+#     scaler = MinMaxScaler(feature_range=(0, 1))
+#
+# X_train = scaler.fit_transform(X_train)
+# X_test = scaler.fit_transform(X_test)
+#
+# # covert into input/output
+# dataset = np.append(X_train, y_train, axis=1)
+# X_train, y_train = ut.split_sequences(dataset, parameters['time_window'], parameters['future_step'])
+# dataset = np.append(X_test, y_test, axis=1)
+# X_test, y_test = ut.split_sequences(dataset, parameters['time_window'], parameters['future_step'])
+#
+# #FreeUp some memeory
+# del(dataset)
+# del(data)
+# del(Xi)
+# del(yi)
+# del(zi)
+#
+# n_features = X_train.shape[2]
+# n_label = y_train.shape[1]
 
-if(data is None):
-    data = es.getDataSet()
-    es.saveDataSet(data)
-if(data.empty):
-    print('Is the DataFrame empty!')
-    raise SystemExit
+X_train, X_test, y_train, y_test = ut.clueanUpData(False, parameters['filter_in'], bestFeature = 0)
 
-# ['Datetime','SinkMin_AP','YawRate','Bs','Heel','Pitch', 'Lwy', 'Tws']
-data=data.drop(['Datetime','Bs','YawRate','Heel', 'Lwy','Tws', 'SinkMin_AP'], axis=1)
-data.dropna(inplace=True)
-# data.info()
+X_train, X_test = ut.scalingData(X_train, X_test, parameters['scaler'])
 
-if parameters['sampling'] > 1:
-    data = data.rolling(parameters['sampling']).mean()
-    data = data.iloc[::parameters['sampling'], :]
-    data.dropna(inplace=True)
+X_train, X_test, y_train, y_test = ut.toSplitSequence(X_train, X_test, y_train, y_test, parameters['time_window'], parameters['future_step'])
 
-# corr_matrix = data.corr()
-
-# get the label array
-yi = data[parameters['label']].values
-# get the days of sailing
-zi = data['Day'].values
-# get the index of the last racing day to be used as TestSet
-itemindex = np.where(zi == 6)
-test_index = itemindex[0][0]
-test_index += 10000
-
-# remove from the DataFrame the colum of the label
-data = data.drop(parameters['label'], axis=1)
-Xi = data.values
-yi = yi.reshape((len(yi), 1))
-
-# data.info()
-
-
-TEST_SPLIT = 1 - (test_index / len(Xi)) # Test Split to last racing day
-
-from sklearn.model_selection import train_test_split
-X_train, X_test, y_train, y_test = train_test_split(Xi, yi, test_size=TEST_SPLIT, shuffle=False)
-
-if(PRINT_FULLDATA):
-    import matplotlib.pyplot as pltDataSet
-    range_history = len(yi)
-    range_future = len(y_test)
-    range_forecast = list(range(test_index, range_history))
-    pltDataSet.figure(figsize=(10, 5))
-    pltDataSet.plot(np.arange(range_history), np.array(yi), label=parameters['label'])
-    pltDataSet.plot(np.arange(len(data['Day'].values)), data['Day'].values, label='Days')
-    pltDataSet.plot(np.arange(range_history), ut.downsampling(yi, 50), label='Human Action', color='red', alpha=0.5)
-    pltDataSet.plot(range_forecast, np.array(y_test), label='TestSet')
-    pltDataSet.title("Full DataSet")
-    pltDataSet.xlabel('Time step' ,  fontsize=18)
-    pltDataSet.legend(loc='upper right')
-    pltDataSet.ylabel('Values', fontsize=18)
-    pltDataSet.legend()
-    pltDataSet.show()
-
-# Scale the 3 dataset
-if parameters['scaler'] == 'Standard':
-    from sklearn.preprocessing import StandardScaler
-    scaler = StandardScaler()
-elif parameters['scaler'] == 'Normalizer':
-    from sklearn.preprocessing import Normalizer
-    scaler = Normalizer()
-elif parameters['scaler'] == 'Robust':
-    from sklearn.preprocessing import RobustScaler
-    scaler = RobustScaler()
-elif parameters['scaler'] == 'MaxAbsScaler':
-    from sklearn.preprocessing import MaxAbsScaler
-    scaler = MaxAbsScaler()
-else:
-    from sklearn.preprocessing import MinMaxScaler
-    scaler = MinMaxScaler(feature_range=(0, 1))
-
-X_train = scaler.fit_transform(X_train)
-X_test = scaler.fit_transform(X_test)
-
-# covert into input/output
-dataset = np.append(X_train, y_train, axis=1)
-X_train, y_train = ut.split_sequences(dataset, parameters['time_window'], parameters['future_step'])
-dataset = np.append(X_test, y_test, axis=1)
-X_test, y_test = ut.split_sequences(dataset, parameters['time_window'], parameters['future_step'])
-
-#FreeUp some memeory
-del(dataset)
-del(data)
-del(Xi)
-del(yi)
-del(zi)
-
+# Number history timestamps
+n_timestamps = X_train.shape[1]
+# Number of input features to the model
 n_features = X_train.shape[2]
-n_label = y_train.shape[1]
+# Number of output timestamps
+n_future = y_train.shape[1]
 
 if(NEPTUNE):
     run = neptune.init_run(
@@ -192,7 +201,7 @@ if parameters['activation'] == "relu":
     activation = relu
 elif parameters['activation'] == "elu":
     activation = elu
-else:
+elif parameters['activation'] == "tanh":
     activation = tanh
 
 # Number history timestamps
@@ -202,9 +211,15 @@ n_features = X_train.shape[2]
 # Number of output timestamps
 n_future = y_train.shape[1]
 
+def create_uncompiled_model_bidirectional_stacked():
+    tmp_model = tf.keras.models.Sequential()
+    tmp_model.add(Bidirectional(LSTM(parameters['layers'][0], return_sequences=True, activation=parameters['activation']), input_shape=(X_train.shape[1], X_train.shape[2])))
+    tmp_model.add(Bidirectional(LSTM(parameters['layers'][1], dropout=parameters['dropout'])))
+    tmp_model.add(Dense(y_train.shape[1], activation='linear'))
+    return tmp_model
 def create_uncompiled_model_bidirectional():
     tmp_model = tf.keras.models.Sequential()
-    tmp_model.add(Bidirectional(LSTM(parameters['layers'][0], activation=parameters['activation']), input_shape=(n_timestamps, n_features)))
+    tmp_model.add(Bidirectional(LSTM(384, activation=parameters['activation']), input_shape=(n_timestamps, n_features)))
     tmp_model.add(Dense(n_future, activation='linear'))
     return tmp_model
 def create_uncompiled_model_ReturnState():
@@ -212,20 +227,20 @@ def create_uncompiled_model_ReturnState():
     n_features = X_train.shape[2]
     input = Input(shape=(n_timesteps, n_features))
 
-    lstm1 = LSTM(parameters['layers'][0], return_state=True)
+    lstm1 = LSTM(768, return_state=True)
     LSTM_output, state_h, state_c = lstm1(input)
     states = [state_h, state_c]
 
     repeat = RepeatVector(n_timesteps) #1
     LSTM_output = repeat(LSTM_output)
 
-    lstm2 = LSTM(parameters['layers'][0], return_sequences=True)
+    lstm2 = LSTM(768, return_sequences=True)
     all_state_h = lstm2(LSTM_output, initial_state=states)
 
     # dense = TimeDistributed(Dense(y_train.shape[1], activation='linear'))
     # output = dense(all_state_h)
 
-    lstm3 = LSTM(parameters['layers'][1], return_sequences=False)
+    lstm3 = LSTM(128, return_sequences=False)
     all_state_d = lstm3(all_state_h)
 
     dense = Dense(y_train.shape[1], activation='linear')
@@ -257,17 +272,17 @@ def create_uncompiled_model_stacked():
 
 def create_uncompiled_model_vanilla():
     tmp_model = tf.keras.models.Sequential()
-    tmp_model.add(LSTM(units=640,
+    tmp_model.add(LSTM(units=300,
                        return_sequences=False,
-                       activation='tanh',
+                       activation=activation,
                        recurrent_dropout=0.0,
-                       kernel_regularizer=L1L2(l1=0.0, l2=0.015),
+                       kernel_regularizer=L1L2(l1=0.0, l2=0.01),
                        input_shape=(n_timestamps, n_features)))
     tmp_model.add(Dense(n_future))
     return tmp_model
 
 def create_model():
-    tmp_model = create_uncompiled_model_ReturnState()
+    tmp_model = create_uncompiled_model_vanilla()
 
     tmp_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=parameters['learning_rate']),
                   loss=parameters['loss_function'],
@@ -285,51 +300,17 @@ def create_model():
 
 model = create_model()
 
-early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                  patience=parameters['patience'],
-                                                  mode='min',
-                                                  restore_best_weights=True)
+my_callbacks = cb.callbacks(False, parameters['patience'] > 0, parameters['learning_rate'] > 9e-4, run)
 
-reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                                 factor=0.2,
-                                                 patience=2,
-                                                 verbose=1,
-                                                 mode='min',
-                                                 min_delta=0.001,
-                                                 cooldown=0,
-                                                 min_lr=1e-7)
-
-# class myLearningCallback(tf.keras.callbacks.Callback):
-#     def __init__(self):
-#         super(myLearningCallback, self).__init__()
-#
-#     def on_epoch_end(self, epoch, logs={}):
-#         if not hasattr(self.model.optimizer, "lr"):
-#             print('Optimizer must have a "lr" attribute.')
-#         # Get the current learning rate from model's optimizer.
-#         lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
-#         print("\nEpoch %05d: Learning rate is %6.4f." % (epoch, lr))
-# lr_calback_object = myLearningCallback()
-
-if NEPTUNE:
+def myNeptuneCallback(run):
     neptune_cbk = NeptuneCallback(
         run=run,
         base_namespace="metrics",  # optionally set a custom namespace name
         log_model_diagram=True,
-        log_on_batch=True,
+        log_on_batch=True
     )
-
-    if parameters['patience'] > 0:
-        my_callbacks = [early_stopping, neptune_cbk, reduce_lr]
-    else:
-        my_callbacks = [neptune_cbk]
-else:
-    if parameters['patience'] > 0:
-        my_callbacks = [early_stopping, reduce_lr]
-    else:
-        my_callbacks = []
-
-
+    return neptune_cbk
+my_callbacks.append(myNeptuneCallback(run))
 
 history = model.fit(X_train, y_train,
                 epochs=parameters['n_epochs'],
@@ -351,11 +332,12 @@ if(PRINT):
 
     SINGLEPOINT = int(len(X_test) / 2)
 
-    # Evaluate the model on the test data using `evaluate`
-    test_results = model.evaluate(X_test, y_test, batch_size=parameters['batch_size'])
+    best_model = keras.models.load_model('best_model.h5')
 
+    # Evaluate the model on the test data using `evaluate`
+    test_results = best_model.evaluate(X_test, y_test, batch_size=parameters['batch_size'])
     # Log predictions as table
-    test_pred = model.predict(X_test)
+    test_pred = best_model.predict(X_test)
 
     # test_results = model.evaluate(X_test, y_test, batch_size=1)
     if (NEPTUNE):
