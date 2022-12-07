@@ -1,5 +1,9 @@
 from neptune_optuna import NeptuneCallback
 import tensorflow as tf
+import Utility as ut
+from tensorflow.keras.callbacks import Callback
+from keras.callbacks import LearningRateScheduler
+import matplotlib.pyplot as plt
 
 def myNeptuneCallback(run):
     neptune_cbk = NeptuneCallback(
@@ -18,7 +22,7 @@ def myEarlyStoppingCallback(metrics = 'val_loss', patience = 6):
                                                   restore_best_weights=True)
     return early_stopping
 
-def myReduceLR(metrics = 'val_loss', factor = 0.1, patience = 2, min_lr = 1e-6):
+def myReduceLR(metrics = 'val_loss', factor = 0.1, patience = 1, min_lr = 1e-6):
     lr_callback = tf.keras.callbacks.ReduceLROnPlateau(monitor=metrics,
                                          factor=factor,
                                          patience=patience,
@@ -27,6 +31,26 @@ def myReduceLR(metrics = 'val_loss', factor = 0.1, patience = 2, min_lr = 1e-6):
                                          # min_delta=0.0001,
                                          cooldown=0,
                                          min_lr=min_lr)
+    return lr_callback
+
+def myReduceLrScaled(metrics = 'val_loss', target = 1e-4):
+    lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
+        # Metrics to be evaluated
+        monitor=metrics,
+        # scale of a big factor to jump
+        # directly on min_lr
+        factor=0.00001,
+        # Wait for 2 epochs with bad metric
+        patience=2,
+        # Display the callback
+        verbose=1,
+        # Direction
+        mode='min',
+        # min_delta=0.0001,
+        cooldown=0,
+        # Minimum Learning Rate
+        min_lr=target
+    )
     return lr_callback
 
 class CustomLearningRateScheduler(tf.keras.callbacks.Callback):
@@ -109,14 +133,45 @@ def lr_schedule_val(epoch, lr, val_loss, summing):
 
     return lr, summing
 
-def callbacks(neptune = True, early = True, lr = True, run = None):
+class OnEpochStart(tf.keras.callbacks.Callback):
+    def __init__(self, optimizer):
+        super(OnEpochStart, self).__init__()
+        self.optimizer = optimizer
+        self.old_lr = 1.0
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if not hasattr(self.model.optimizer, "lr"):
+            raise ValueError('Optimizer must have a "lr" attribute.')
+        # Get the current learning rate from model's optimizer.
+        lr = ut.get_lr_metric(self.optimizer)
+        if self.old_lr > lr:
+            self.old_lr = lr
+            print("\nEpoch %05d: Learning rate is %6.8f." % (epoch, lr))
+
+def decay_schedule(epoch, lr):
+    # decay by 0.1 every 5 epochs; use `% 1` to decay after each epoch
+    if(epoch==1):
+        lr = lr * 0.1
+
+    if (epoch % 2 == 0) and (epoch != 0):
+        lr = lr * 0.1
+    return lr
+
+def callbacks(neptune = True, early = True, lr = True, scheduler = False, run = None, opti = None):
     callbacks = []
     if neptune and run != None:
         callbacks.append(myNeptuneCallback(run))
     if early:
         callbacks.append(myEarlyStoppingCallback())
     if lr:
-        callbacks.append(myReduceLR())
+        callbacks.append(myReduceLrScaled(target=7e-7))
+    if scheduler:
+        lr_scheduler = LearningRateScheduler(decay_schedule)
+        callbacks.append(lr_scheduler)
+    if opti !=None:
+        callbacks.append(OnEpochStart(opti))
+
     callbacks.append(tf.keras.callbacks.ModelCheckpoint(filepath='best_model.h5', monitor='val_loss', save_best_only=True))
 
     return callbacks
+

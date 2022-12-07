@@ -32,19 +32,19 @@ run = neptune.init_run(
 
 parameters = {
     "time_window": 40,
-    "min_hidden_layers": 0,
-    "max_hidden_layers": 0,
+    "min_hidden_layers": 1,
+    "max_hidden_layers": 1,
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 1e-3,
-    "n_epochs": 70,
-    'dropout': 0.2,
+    "learning_rate": 7e-6,
+    "n_epochs": 35,
+    'dropout': 0.0,
     "label": 'Pitch',
     "val_split": 0,
-    "max_trials": 20,
-    "patience": 6,
-    "filter_in": 'wiener',  # kalman wiener simple none
-    "filter_out": 'kalman',  # kalman wiener simple none
+    "max_trials": 32,
+    "patience": 5,
+    "filter_in": 'none',  # kalman wiener simple none
+    "filter_out": 'none',  # kalman wiener simple none
     "optimizer": 'adam', #adam
     "activation": 'tanh',  # tanh or relu or elu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer
@@ -140,20 +140,7 @@ X_train, X_test = ut.scalingData(X_train, X_test, parameters['scaler'])
 
 X_train, X_test, y_train, y_test = ut.toSplitSequence(X_train, X_test, y_train, y_test, parameters['time_window'], parameters['future_step'])
 
-# Number history timestamps
-n_timestamps = X_train.shape[1]
-# Number of input features to the model
-n_features = X_train.shape[2]
-# Number of output timestamps
-n_future = y_train.shape[1]
-
-
-if parameters['activation'] == "relu":
-    activation = relu
-elif parameters['activation'] == "elu":
-    activation = elu
-else:
-    activation = tanh
+activation = ut.get_activation(parameters['activation'])
 
 # Number history timestamps
 n_timestamps = X_train.shape[1]
@@ -172,47 +159,48 @@ def objective(trial):
         n_layers = parameters['max_hidden_layers']
 
     # l1 = trial.suggest_categorical("kernel_regularizer_l1", [0.0, 0.01])
-    l2 = trial.suggest_categorical("kernel_regularizer_l2", [0.0, 0.01])
+    # l2 = trial.suggest_categorical("kernel_regularizer_l2", [0.0, 0.01])
     l1 = 0.0
-    # l2 = 0.0
+    l2 = 0.0
 
-    # batch_size = trial.suggest_categorical("batch_size", [32, 64, 96])
-    batch_size = 64#trial.suggest_int("batchsize", 32, 128, step=32, log=False)
+    batch_size = 64#trial.suggest_categorical("batch_size", [32, 64, 128])
+    # batch_size = 64#trial.suggest_int("batchsize", 32, 128, step=32, log=False)
 
     if parameters['dropout'] > 0:
         recurrent_dropout = trial.suggest_float('recurrent_dropout', 0.0, parameters['dropout'], step=0.1)
     else:
         recurrent_dropout = 0.0
 
-    input_units = trial.suggest_int("input_units", n_features+1, 300, log=True)
-    # output_units = trial.suggest_int("output_units", 128, 256, 128)
-    # dense_units = trial.suggest_int("dense_units", 64, 128, 64)
+    input_units = trial.suggest_int("input_units", 256, 384, 128)
+    output_units = trial.suggest_int("output_units", 64, 128, 64)
+    dense_units = trial.suggest_int("dense_units", 32, 64, 32)
 
     model = tf.keras.models.Sequential()
     model.add(LSTM(units=input_units,
-                   return_sequences=False,
+                   return_sequences=True,
                    activation=activation,
                    kernel_regularizer=L1L2(l1=l1, l2=l2),
-                   recurrent_dropout=recurrent_dropout,
+                   #recurrent_dropout=recurrent_dropout,
                    input_shape=(X_train.shape[1], X_train.shape[2])))
-    # for i in range(n_layers):
-    #     num_hidden = trial.suggest_int(f'n_units_l{i}', 256, 768, 256)
-    #     model.add(LSTM(num_hidden, return_sequences=True))
+    for i in range(n_layers):
+        num_hidden = trial.suggest_int(f'n_units_l{i}', 128, 256, 128)
+        model.add(LSTM(num_hidden, return_sequences=True))
         # p = trial.suggest_float("dropout_l{}".format(i), 0.0, parameters['dropout'])
         # if(p>0):
         #     model.add(Dropout(p))
     # model.add(TimeDistributed(Dense(y_train.shape[1], activation='linear')))
-    # model.add(LSTM(units=output_units, return_sequences=False))
-    # model.add(Dense(units=64, activation='linear'))
-    model.add(Dropout(recurrent_dropout))
+    model.add(LSTM(units=output_units, return_sequences=False))
+    model.add(Dense(units=dense_units, activation='linear'))
+    # if(recurrent_dropout>0):
+    #     model.add(Dropout(recurrent_dropout))
     model.add(Dense(y_train.shape[1], activation='linear'))
 
 
     if parameters['optimizer'] == 'adam':
-        lr = 0.0001 #default
-        # lr = parameters['learning_rate']
-        #lr = trial.suggest_float('learning_rate', 1e-6, 1e-2, log=True)
-        # lr = trial.suggest_categorical("learning_rate", [1e-3, 5e-6])
+        # lr = 0.0001 #default
+        #lr = parameters['learning_rate']
+        # lr = trial.suggest_float('learning_rate', 1e-7, 1e-4, log=True)
+        lr = trial.suggest_categorical("learning_rate", [1e-4, 5e-5, 1e-5, 5e-6, 1e-6])
         opti = tf.keras.optimizers.Adam(learning_rate=lr)
     else:
         # lr = 0.01 #default
@@ -225,7 +213,12 @@ def objective(trial):
                   metrics=[tf.keras.metrics.RootMeanSquaredError(), tf.keras.metrics.MeanAbsoluteError(),
                            tf.keras.metrics.MeanSquaredError()])
 
-    my_callbacks = cb.callbacks(False, parameters['patience'] > 0, parameters['learning_rate'] > 9e-4, run)
+    my_callbacks = cb.callbacks(neptune=False,
+                                early=parameters['patience'] > 0,
+                                lr=True,
+                                scheduler=False,
+                                run=run,
+                                opti=model.optimizer)
 
     my_callbacks.append(TFKerasPruningCallback(trial, "val_loss"))
     # # Create callbacks for early stopping and pruning.

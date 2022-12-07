@@ -6,6 +6,7 @@ from numpy import array
 from numpy import minimum
 import tensorflow as tf
 import sklearn.metrics as metrics
+from tensorflow.keras.activations import elu, relu, tanh
 
 def set_seed(sd=19740429):
     from numpy.random import seed
@@ -328,3 +329,74 @@ def model_performance(model, X, y):
     except:
         print("R2 Testing FAILS")
         return DEFAULT_RETURN
+
+def get_optimizer(optimizer = 'adam', learning_rate = '0.001', decay = None, decay_steps = 4500, decay_rate = 0.5):
+
+    if decay == 'time':
+        lr = tf.keras.optimizers.schedules.InverseTimeDecay(
+            learning_rate,
+            decay_steps=decay_steps,
+            decay_rate=decay_rate,
+            staircase=False)
+    elif decay == 'expo':
+        lr = tf.keras.optimizers.schedules.ExponentialDecay(
+            learning_rate,
+            decay_steps=decay_steps,
+            decay_rate=decay_rate, #0.96
+            staircase=False)
+    else:
+        if optimizer == 'adam':
+            if learning_rate == 0:
+                lr = 0.001  # default
+            else:
+                lr = learning_rate
+        else:
+            if learning_rate == 0:
+                lr = 0.01  # default
+            else:
+                lr = learning_rate
+
+    if optimizer == 'adam':
+        opti = tf.keras.optimizers.Adam(learning_rate=lr)
+    else:
+        momentum = 0.9 #default
+        nesterov = True
+        opti = tf.keras.optimizers.SGD(lr=lr, decay=1e-6, momentum=momentum, nesterov=nesterov)
+    return opti
+
+def get_lr_metric(optimizer):
+    lr = optimizer.learning_rate
+    if isinstance(lr, tf.keras.optimizers.schedules.LearningRateSchedule):
+        return lr(optimizer.iterations)
+    else:
+        return lr
+
+def get_activation(activation = "tanh"):
+    if activation == "relu":
+        act_func = relu
+    elif activation == "elu":
+        act_func = elu
+    else:
+        act_func = tanh
+    return act_func
+
+def distance(a, b):
+    if (a == b):
+        return 0
+    elif (a < 0) and (b < 0) or (a > 0) and (b >= 0):  # fix: b >= 0 to cover case b == 0
+        if (a < b):
+            return (abs(abs(a) - abs(b)))
+        else:
+            return -(abs(abs(a) - abs(b)))
+    else:
+        return math.copysign((abs(a) + abs(b)), b)
+
+def LearningRatePlot(model, X_train,y_train):
+    # model is a Keras model
+    import LRFinderKeras
+    lr_finder = LRFinderKeras.LRFinder(model)
+    # Train a model with batch size 512 for 5 epochs
+    # with learning rate growing exponentially from 0.0001 to 1
+    lr_finder.find(X_train, y_train, start_lr=1e-7, end_lr=10, batch_size=64, epochs=2)
+    lr_finder.plot_loss(n_skip_beginning=20, n_skip_end=5)
+    lr_finder.plot_loss_change(sma=20, n_skip_beginning=20, n_skip_end=5, y_lim=(-0.005, 0.001))
