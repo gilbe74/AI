@@ -128,11 +128,11 @@ def create_uncompiled_model_bidirectional(n_timestamps, n_future, n_features, la
 def create_uncompiled_model_ReturnState_ReturnSeq(n_timestamps, n_future, n_features, layer_units, activation):
     tf.keras.layers.Input(shape=(n_timestamps, n_features))
 
-    lstm1 = LSTM(layer_units, return_sequences=True, return_state=True)
+    lstm1 = LSTM(layer_units, return_sequences=True, return_state=True, activation=activation)
     all_state_h, state_h, state_c = lstm1(input)
     states = [state_h, state_c]
 
-    lstm2 = LSTM(layer_units, return_sequences=True)
+    lstm2 = LSTM(layer_units, return_sequences=True, activation=activation)
     all_state_h = lstm2(all_state_h, initial_state=states)
 
     dense = TimeDistributed(Dense(n_future, activation='linear'))
@@ -150,10 +150,10 @@ def create_uncompiled_model_ReturnState_ReturnSeq(n_timestamps, n_future, n_feat
 def create_uncompiled_model_StackedMulti(n_timestamps, n_future, n_features, layer_units, activation):
     tmp_model = tf.keras.models.Sequential()
     tmp_model.add(LSTM(layer_units, activation=activation, return_sequences=True, input_shape=(n_timestamps, n_features)))
-    tmp_model.add(LSTM(int(layer_units/5*4), activation=activation, return_sequences=True))
-    tmp_model.add(LSTM(int(layer_units/5*3), activation=activation, return_sequences=True))
-    tmp_model.add(LSTM(int(layer_units/5*2), activation=activation))
-    tmp_model.add(Dense(int(layer_units/5), activation=activation))
+    tmp_model.add(LSTM(256, activation=activation, return_sequences=True))
+    tmp_model.add(LSTM(128, activation=activation, return_sequences=True))
+    tmp_model.add(LSTM(128, activation=activation))
+    tmp_model.add(Dense(64, activation=activation))
     tmp_model.add(Dense(n_future, activation='linear'))
     return tmp_model
 

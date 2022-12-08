@@ -391,12 +391,12 @@ def distance(a, b):
     else:
         return math.copysign((abs(a) + abs(b)), b)
 
-def LearningRatePlot(model, X_train,y_train):
+def LearningRatePlot(model, X_train,y_train, epochs = 2, batch_size = 64):
     # model is a Keras model
     import LRFinderKeras
     lr_finder = LRFinderKeras.LRFinder(model)
     # Train a model with batch size 512 for 5 epochs
     # with learning rate growing exponentially from 0.0001 to 1
-    lr_finder.find(X_train, y_train, start_lr=1e-7, end_lr=10, batch_size=64, epochs=2)
+    lr_finder.find(X_train, y_train, start_lr=1e-7, end_lr=10, batch_size=batch_size, epochs=epochs)
     lr_finder.plot_loss(n_skip_beginning=20, n_skip_end=5)
     lr_finder.plot_loss_change(sma=20, n_skip_beginning=20, n_skip_end=5, y_lim=(-0.005, 0.001))

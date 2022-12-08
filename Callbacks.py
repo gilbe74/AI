@@ -157,14 +157,14 @@ def decay_schedule(epoch, lr):
         lr = lr * 0.1
     return lr
 
-def callbacks(neptune = True, early = True, lr = True, scheduler = False, run = None, opti = None):
+def callbacks(neptune = True, early = True, lr = True, scheduler = False, run = None, opti = None, target = 1e-7):
     callbacks = []
     if neptune and run != None:
         callbacks.append(myNeptuneCallback(run))
     if early:
         callbacks.append(myEarlyStoppingCallback())
     if lr:
-        callbacks.append(myReduceLrScaled(target=7e-7))
+        callbacks.append(myReduceLrScaled(target=target))
     if scheduler:
         lr_scheduler = LearningRateScheduler(decay_schedule)
         callbacks.append(lr_scheduler)

@@ -32,8 +32,8 @@ run = neptune.init_run(
 
 parameters = {
     "time_window": 40,
-    "min_hidden_layers": 1,
-    "max_hidden_layers": 1,
+    "min_hidden_layers": 2,
+    "max_hidden_layers": 2,
     "future_step": 1,
     "sampling": 1,
     "learning_rate": 7e-6,
@@ -41,8 +41,8 @@ parameters = {
     'dropout': 0.0,
     "label": 'Pitch',
     "val_split": 0,
-    "max_trials": 32,
-    "patience": 5,
+    "max_trials": 30,
+    "patience": 4,
     "filter_in": 'none',  # kalman wiener simple none
     "filter_out": 'none',  # kalman wiener simple none
     "optimizer": 'adam', #adam
@@ -200,7 +200,7 @@ def objective(trial):
         # lr = 0.0001 #default
         #lr = parameters['learning_rate']
         # lr = trial.suggest_float('learning_rate', 1e-7, 1e-4, log=True)
-        lr = trial.suggest_categorical("learning_rate", [1e-4, 5e-5, 1e-5, 5e-6, 1e-6])
+        lr = trial.suggest_categorical("learning_rate", [1e-5, 5e-6, 1e-6])
         opti = tf.keras.optimizers.Adam(learning_rate=lr)
     else:
         # lr = 0.01 #default
@@ -218,7 +218,9 @@ def objective(trial):
                                 lr=True,
                                 scheduler=False,
                                 run=run,
-                                opti=model.optimizer)
+                                opti=model.optimizer,
+                                target=5e-7
+                                )
 
     my_callbacks.append(TFKerasPruningCallback(trial, "val_loss"))
     # # Create callbacks for early stopping and pruning.

@@ -59,7 +59,7 @@ parameters = {
     "layers": [24,128],
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 5e-6,
+    "learning_rate": 8e-6,
     "l1": 0.0,
     "l2": 0.0,
     "batch_size": 64,
@@ -75,7 +75,7 @@ parameters = {
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer or Robust or MaxAbsScaler
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
 }
-tags = ['LSTM_WS', 'TW=40', "Tiny", "Optuna", "BS=64"]
+tags = ['LSTM_WS', 'TW=40', "StackedMulti", "BS=64"]
 
 # data = es.retriveDataSet(False)
 #
@@ -291,7 +291,7 @@ n_features = X_train.shape[2]
 def create_model():
     activation = ut.get_activation(parameters['activation'])
 
-    tmp_model = md.create_uncompiled_model_StackedMulti(n_timestamps,n_future,n_features,384, activation)
+    tmp_model = md.create_uncompiled_model_StackedMulti(n_timestamps,n_future,n_features,384,activation)
 
     opti = ut.get_optimizer(optimizer=parameters['optimizer'],
                             learning_rate=parameters['learning_rate'],
@@ -316,12 +316,15 @@ def create_model():
 
 model = create_model()
 
+# ut.LearningRatePlot(model,X_train,y_train, 2, parameters['batch_size'])
+
 my_callbacks = cb.callbacks(neptune=False,
                             early = parameters['patience'] > 0,
                             lr = True,
                             scheduler= False,
                             run = run,
-                            opti = model.optimizer)
+                            opti = model.optimizer,
+                            target= 5e-7)
 def myNeptuneCallback(run):
     neptune_cbk = NeptuneCallback(
         run=run,
@@ -336,13 +339,11 @@ from time import time
 start_at = time()
 print("## START ##")
 
-ut.LearningRatePlot(model,X_train,y_train)
-
 history = model.fit(X_train, y_train,
                 epochs=parameters['n_epochs'],
                 batch_size=parameters['batch_size'],
                 validation_data=(X_test, y_test),
-                callbacks=my_callbacks#[lr_finder]
+                callbacks=my_callbacks
                 )
 
 print("--- %s seconds ---" % int(time() - start_at))
