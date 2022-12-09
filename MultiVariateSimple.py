@@ -56,14 +56,15 @@ NEPTUNE_TOKEN = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJ
 parameters = {
     "debug": False,
     "time_window": 40,
-    "layers": [24,128],
+    "layers": [384,128],
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 8e-6,
+    "learning_rate": 5e-5,
+    "learning_rate_tg": 1e-6,
     "l1": 0.0,
     "l2": 0.0,
     "batch_size": 64,
-    "n_epochs": 70,
+    "n_epochs": 30,
     'dropout': 0,
     "label": 'Pitch',
     "patience": 6,
@@ -75,7 +76,7 @@ parameters = {
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer or Robust or MaxAbsScaler
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
 }
-tags = ['LSTM_WS', 'TW=40', "StackedMulti", "BS=64"]
+tags = ['LSTM_WS', 'TW=40', "ReturnState", "BS=64"]
 
 # data = es.retriveDataSet(False)
 #
@@ -291,7 +292,7 @@ n_features = X_train.shape[2]
 def create_model():
     activation = ut.get_activation(parameters['activation'])
 
-    tmp_model = md.create_uncompiled_model_StackedMulti(n_timestamps,n_future,n_features,384,activation)
+    tmp_model = md.create_uncompiled_model_ReturnState_ReturnSeq_2Layers(n_timestamps,n_future,n_features,192,activation)
 
     opti = ut.get_optimizer(optimizer=parameters['optimizer'],
                             learning_rate=parameters['learning_rate'],
@@ -324,7 +325,7 @@ my_callbacks = cb.callbacks(neptune=False,
                             scheduler= False,
                             run = run,
                             opti = model.optimizer,
-                            target= 5e-7)
+                            target= parameters['learning_rate_tg'])
 def myNeptuneCallback(run):
     neptune_cbk = NeptuneCallback(
         run=run,

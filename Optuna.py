@@ -37,12 +37,12 @@ parameters = {
     "future_step": 1,
     "sampling": 1,
     "learning_rate": 7e-6,
-    "n_epochs": 35,
+    "n_epochs": 40,
     'dropout': 0.0,
     "label": 'Pitch',
     "val_split": 0,
-    "max_trials": 30,
-    "patience": 4,
+    "max_trials": 12,
+    "patience": 5,
     "filter_in": 'none',  # kalman wiener simple none
     "filter_out": 'none',  # kalman wiener simple none
     "optimizer": 'adam', #adam
@@ -171,36 +171,50 @@ def objective(trial):
     else:
         recurrent_dropout = 0.0
 
-    input_units = trial.suggest_int("input_units", 256, 384, 128)
-    output_units = trial.suggest_int("output_units", 64, 128, 64)
-    dense_units = trial.suggest_int("dense_units", 32, 64, 32)
+    input_units = trial.suggest_int("input_units", 128, 256, 64)
+    # output_units = trial.suggest_int("output_units", 64, 128, 64)
+    # dense_units = trial.suggest_int("dense_units", 32, 64, 32)
+    #
+    # model = tf.keras.models.Sequential()
+    # model.add(LSTM(units=input_units,
+    #                return_sequences=True,
+    #                activation=activation,
+    #                kernel_regularizer=L1L2(l1=l1, l2=l2),
+    #                #recurrent_dropout=recurrent_dropout,
+    #                input_shape=(X_train.shape[1], X_train.shape[2])))
+    # for i in range(n_layers):
+    #     num_hidden = trial.suggest_int(f'n_units_l{i}', 128, 256, 128)
+    #     model.add(LSTM(num_hidden, return_sequences=True))
+    #     # p = trial.suggest_float("dropout_l{}".format(i), 0.0, parameters['dropout'])
+    #     # if(p>0):
+    #     #     model.add(Dropout(p))
+    # # model.add(TimeDistributed(Dense(y_train.shape[1], activation='linear')))
+    # model.add(LSTM(units=output_units, return_sequences=False))
+    # model.add(Dense(units=dense_units, activation='linear'))
+    # # if(recurrent_dropout>0):
+    # #     model.add(Dropout(recurrent_dropout))
+    # model.add(Dense(y_train.shape[1], activation='linear'))
 
-    model = tf.keras.models.Sequential()
-    model.add(LSTM(units=input_units,
-                   return_sequences=True,
-                   activation=activation,
-                   kernel_regularizer=L1L2(l1=l1, l2=l2),
-                   #recurrent_dropout=recurrent_dropout,
-                   input_shape=(X_train.shape[1], X_train.shape[2])))
-    for i in range(n_layers):
-        num_hidden = trial.suggest_int(f'n_units_l{i}', 128, 256, 128)
-        model.add(LSTM(num_hidden, return_sequences=True))
-        # p = trial.suggest_float("dropout_l{}".format(i), 0.0, parameters['dropout'])
-        # if(p>0):
-        #     model.add(Dropout(p))
-    # model.add(TimeDistributed(Dense(y_train.shape[1], activation='linear')))
-    model.add(LSTM(units=output_units, return_sequences=False))
-    model.add(Dense(units=dense_units, activation='linear'))
-    # if(recurrent_dropout>0):
-    #     model.add(Dropout(recurrent_dropout))
-    model.add(Dense(y_train.shape[1], activation='linear'))
+    input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
+
+    lstm1 = LSTM(input_units, return_sequences=True, return_state=True, activation=activation)
+    all_state_h, state_h, state_c = lstm1(input)
+    states = [state_h, state_c]
+
+    lstm2 = LSTM(input_units, return_sequences=False, activation=activation)
+    all_state_h = lstm2(all_state_h, initial_state=states)
+
+    dense = Dense(n_future, activation='linear')
+    output = dense(all_state_h)
+
+    model = Model(input, output, name='model_LSTM_return_state')
 
 
     if parameters['optimizer'] == 'adam':
         # lr = 0.0001 #default
         #lr = parameters['learning_rate']
-        # lr = trial.suggest_float('learning_rate', 1e-7, 1e-4, log=True)
-        lr = trial.suggest_categorical("learning_rate", [1e-5, 5e-6, 1e-6])
+        lr = trial.suggest_float('learning_rate', 1e-6, 1e-4, log=True)
+        #lr = trial.suggest_categorical("learning_rate", [5e-5, 1e-5, 5e-6])
         opti = tf.keras.optimizers.Adam(learning_rate=lr)
     else:
         # lr = 0.01 #default
@@ -219,7 +233,7 @@ def objective(trial):
                                 scheduler=False,
                                 run=run,
                                 opti=model.optimizer,
-                                target=5e-7
+                                target=1e-6
                                 )
 
     my_callbacks.append(TFKerasPruningCallback(trial, "val_loss"))

@@ -126,7 +126,7 @@ def create_uncompiled_model_bidirectional(n_timestamps, n_future, n_features, la
     return tmp_model
 
 def create_uncompiled_model_ReturnState_ReturnSeq(n_timestamps, n_future, n_features, layer_units, activation):
-    tf.keras.layers.Input(shape=(n_timestamps, n_features))
+    input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
 
     lstm1 = LSTM(layer_units, return_sequences=True, return_state=True, activation=activation)
     all_state_h, state_h, state_c = lstm1(input)
@@ -135,14 +135,30 @@ def create_uncompiled_model_ReturnState_ReturnSeq(n_timestamps, n_future, n_feat
     lstm2 = LSTM(layer_units, return_sequences=True, activation=activation)
     all_state_h = lstm2(all_state_h, initial_state=states)
 
-    dense = TimeDistributed(Dense(n_future, activation='linear'))
-    output = dense(all_state_h)
+    # dense = TimeDistributed(Dense(n_future, activation='linear'))
+    # output = dense(all_state_h)
 
-    # lstm3 = LSTM(X_train.shape[1], return_sequences=False)
-    # all_state_d = lstm3(all_state_h)
-    #
-    # dense = Dense(y_train.shape[1], activation='linear')
-    # output = dense(all_state_d)
+    lstm3 = LSTM(n_features+1, return_sequences=False)
+    all_state_d = lstm3(all_state_h)
+
+    dense = Dense(n_future, activation='linear')
+    output = dense(all_state_d)
+
+    tmp_model = Model(input, output, name='model_LSTM_return_state')
+    return tmp_model
+
+def create_uncompiled_model_ReturnState_ReturnSeq_2Layers(n_timestamps, n_future, n_features, layer_units, activation):
+    input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
+
+    lstm1 = LSTM(layer_units, return_sequences=True, return_state=True, activation=activation)
+    all_state_h, state_h, state_c = lstm1(input)
+    states = [state_h, state_c]
+
+    lstm2 = LSTM(layer_units, return_sequences=False, activation=activation)
+    all_state_h = lstm2(all_state_h, initial_state=states)
+
+    dense = Dense(n_future, activation='linear')
+    output = dense(all_state_h)
 
     tmp_model = Model(input, output, name='model_LSTM_return_state')
     return tmp_model
