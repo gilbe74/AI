@@ -183,9 +183,9 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
 
     pyplotMetrics.show(block=True)
     pltCoere.show(block=True)
-    plt.show(block=False)
     pltError.show(block=True)
-    plt.close()
+    plt.show(block=True)
     pltCoere.close()
+    plt.close()
     pyplotMetrics.close()
     pltError.close()

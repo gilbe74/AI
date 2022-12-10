@@ -14,7 +14,7 @@ def myNeptuneCallback(run):
     )
     return neptune_cbk
 
-def myEarlyStoppingCallback(metrics = 'val_loss', patience = 6):
+def myEarlyStoppingCallback(metrics = 'val_loss', patience = 7):
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor=metrics,
                                                   patience=patience,
                                                   mode='min',
@@ -33,7 +33,7 @@ def myReduceLR(metrics = 'val_loss', factor = 0.1, patience = 1, min_lr = 1e-6):
                                          min_lr=min_lr)
     return lr_callback
 
-def myReduceLrScaled(metrics = 'val_loss', target = 1e-4):
+def myReduceLrScaled(metrics = 'val_loss', target = 1e-4, patience = 2):
     lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
         # Metrics to be evaluated
         monitor=metrics,
@@ -41,7 +41,7 @@ def myReduceLrScaled(metrics = 'val_loss', target = 1e-4):
         # directly on min_lr
         factor=0.00001,
         # Wait for 2 epochs with bad metric
-        patience=2,
+        patience=patience,
         # Display the callback
         verbose=1,
         # Direction
@@ -148,6 +148,20 @@ class OnEpochStart(tf.keras.callbacks.Callback):
             self.old_lr = lr
             print("\nEpoch %05d: Learning rate is %6.8f." % (epoch, lr))
 
+def tensorBoardCallback():
+    # run parameter
+    from datetime import datetime
+    log_dir = "logs/" + datetime.now().strftime("%m%d-%H%M")
+    hist_callback = tf.keras.callbacks.TensorBoard(
+        log_dir=log_dir,
+        histogram_freq=1,
+        embeddings_freq=1,
+        write_graph=True,
+        write_images=True,
+        update_freq='epoch')
+
+    print("log_dir", log_dir)
+    return hist_callback
 def decay_schedule(epoch, lr):
     # decay by 0.1 every 5 epochs; use `% 1` to decay after each epoch
     if(epoch==1):
@@ -157,14 +171,14 @@ def decay_schedule(epoch, lr):
         lr = lr * 0.1
     return lr
 
-def callbacks(neptune = True, early = True, lr = True, scheduler = False, run = None, opti = None, target = 1e-7):
+def callbacks(neptune = True, early = True, lr = True, scheduler = False, run = None, opti = None, target = 1e-7, patience = 2):
     callbacks = []
     if neptune and run != None:
         callbacks.append(myNeptuneCallback(run))
     if early:
         callbacks.append(myEarlyStoppingCallback())
     if lr:
-        callbacks.append(myReduceLrScaled(target=target))
+        callbacks.append(myReduceLrScaled(target=target, patience=patience))
     if scheduler:
         lr_scheduler = LearningRateScheduler(decay_schedule)
         callbacks.append(lr_scheduler)

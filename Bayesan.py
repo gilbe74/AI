@@ -32,7 +32,8 @@ from tensorflow.keras.regularizers import L1L2
 import absl.logging
 
 absl.logging.set_verbosity(absl.logging.ERROR)
-from scipy import signal
+import Callbacks as cb
+import Models as md
 
 DISPLAY = False
 
@@ -43,7 +44,8 @@ parameters = {
     "max_hidden_layers": 0,
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 1e-3,
+    "learning_rate": 8e-6,
+    "learning_rate_tg": 8e-7,
     "batch_size": 64,
     "n_epochs": 70,
     'dropout': 0,
@@ -51,6 +53,8 @@ parameters = {
     "patience": 6,
     "val_split": 0,
     "max_trials": 20,
+    "filter_in": 'none',  # kalman wiener simple none
+    "filter_out": 'none',  # kalman wiener simple none
     "optimizer": 'adam',  # adam
     "activation": 'tanh',  # tanh or relu
     "scaler": 'Standard',  # Standard or MinMaxScaler
@@ -58,132 +62,35 @@ parameters = {
 }
 tags = ['LSTM_BO']
 
-import DataRetrive as es
+ut.set_seed()
 
-data = es.retriveDataSet(False)
+X_train, X_test, y_train, y_test = ut.clueanUpData(False, parameters['filter_in'], bestFeature=0)
 
-if (data is None):
-    data = es.getDataSet()
-    es.saveDataSet(data)
-if (data.empty):
-    print('Is the DataFrame empty!')
-    raise SystemExit
+X_train, X_test = ut.scalingData(X_train, X_test, parameters['scaler'])
 
-# ['Datetime','SinkMin_AP','YawRate','Bs','Heel','Pitch', 'Lwy', 'Tws']
-data = data.drop(['Datetime', 'Bs', 'YawRate', 'Heel', 'Lwy', 'Tws', 'SinkMin_AP'], axis=1)
-data.dropna(inplace=True)
-# data.info()
+X_train, X_test, y_train, y_test = ut.toSplitSequence(X_train, X_test, y_train, y_test, parameters['time_window'],
+                                                      parameters['future_step'])
 
+activation = ut.get_activation(parameters['activation'])
 
-if parameters['sampling'] > 1:
-    data = data.rolling(parameters['sampling']).mean()
-    data = data.iloc[::parameters['sampling'], :]
-    data.dropna(inplace=True)
-
-# corr_matrix = data.corr()
-
-# get the label array
-yi = data[parameters['label']].values
-# get the days of sailing
-zi = data['Day'].values
-# get the index of the last racing day to be used as TestSet
-itemindex = np.where(zi == 6)
-test_index = itemindex[0][0]
-test_index += 10000
-
-# remove from the DataFrame the colum of the label
-data = data.drop(parameters['label'], axis=1)
-Xi = data.values
-yi = yi.reshape((len(yi), 1))
-
-# data.info()
-
-TEST_SPLIT = 1 - (test_index / len(Xi))  # Test Split to last racing day
-
-from sklearn.model_selection import train_test_split
-
-X_train, X_test, y_train, y_test = train_test_split(Xi, yi, test_size=TEST_SPLIT, shuffle=False)
-
-# Split Validation Set
-if parameters['val_split'] == 0:
-    X_val = X_test
-    y_val = y_test
-else:
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=parameters['val_split'],
-                                                      shuffle=False)  # 0.25 x 0.8 = 0.2
-
-# Scale the 3 dataset
-if parameters['scaler'] == 'Standard':
-    from sklearn.preprocessing import StandardScaler
-
-    scaler = StandardScaler()
-else:
-    from sklearn.preprocessing import MinMaxScaler
-
-    scaler = MinMaxScaler(feature_range=(-1, 1))
-
-X_train = scaler.fit_transform(X_train)
-X_val = scaler.fit_transform(X_val)
-X_test = scaler.fit_transform(X_test)
-
-# covert into input/output
-dataset = np.append(X_train, y_train, axis=1)
-X_train, y_train = ut.split_sequences(dataset, parameters['time_window'], parameters['future_step'])
-dataset = np.append(X_val, y_val, axis=1)
-X_val, y_val = ut.split_sequences(dataset, parameters['time_window'], parameters['future_step'])
-dataset = np.append(X_test, y_test, axis=1)
-X_test, y_test = ut.split_sequences(dataset, parameters['time_window'], parameters['future_step'])
-
-# FreeUp some memeory
-del (dataset)
-del (data)
-del (Xi)
-del (yi)
-del (zi)
-
-n_features = X_train.shape[2]
-n_label = y_train.shape[1]
-
-
-early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                  patience=parameters['patience'],
-                                                  mode='min',
-                                                  restore_best_weights=True)
-
-reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                                 factor=0.01,
-                                                 patience=2,
-                                                 verbose=1,
-                                                 mode='min',
-                                                 # min_delta=0.0001,
-                                                 cooldown=0,
-                                                 min_lr=1e-5)
-
-# run parameter
-from datetime import datetime
-log_dir = "logs/" + datetime.now().strftime("%m%d-%H%M")
-
-hist_callback = tf.keras.callbacks.TensorBoard(
-    log_dir=log_dir,
-    histogram_freq=1,
-    embeddings_freq=1,
-    write_graph=True,
-    write_images= True,
-    update_freq='epoch')
-
-print("log_dir", log_dir)
-
-if parameters['activation'] == "relu":
-    activation = relu
-elif parameters['activation'] == "elu":
-    activation = elu
-else:
-    activation = tanh
-
+# Number history timestamps
 n_timestamps = X_train.shape[1]
+# Number of input features to the model
 n_features = X_train.shape[2]
+# Number of output timestamps
 n_future = y_train.shape[1]
 
+DEFAULT_RETURN = 0.4
+
+my_callbacks = cb.callbacks(neptune=False,
+                                early=parameters['patience'] > 0,
+                                lr=True,
+                                scheduler=False,
+                                run=None,
+                                opti=None,
+                                target=parameters['learning_rate_tg'],
+                                patience=2)
+# my_callbacks.append(cb.tensorBoardCallback())
 
 def build_model(hp):
     tf.keras.backend.clear_session()
@@ -192,19 +99,6 @@ def build_model(hp):
     #     n_layers = hp.Int('n_layers', parameters['mai_hidden_layers'], parameters['max_hidden_layers'])
     # else:
     #     n_layers = 0
-
-    if parameters['optimizer'] == 'adam':
-        lr = 0.001 #default
-        # lr = parameters['learning_rate']
-        # lr = hp.Choice("learning_rate", values=[5e-6, 1e-4, 1e-5])
-        opti = tf.keras.optimizers.Adam(learning_rate=lr)
-    else:
-        # lr = 0.01 #default
-        # lr = parameters['learning_rate']
-        lr = hp.Choice("learning_rate", values=[0.01, 0.001])
-        momentum = hp.Choice("momentum", values=[0.9, 0.8, 0.7]) # 0.9 default
-        nesterov = True  # hp.Choice("nesterov", values=[True, False])
-        opti = tf.keras.optimizers.SGD(learning_rate=lr, decay=1e-6, momentum=momentum, nesterov=nesterov)
 
     l1 = 0.0
     l2 = 0.0
@@ -223,7 +117,7 @@ def build_model(hp):
     model = tf.keras.models.Sequential()
     model.add(LSTM(input_units,
                    return_sequences=False,
-                   activation=parameters['activation'],  # tanh
+                   activation=activation,  # tanh
                    kernel_regularizer=L1L2(l1=l1, l2=l2),
                    recurrent_dropout=recurrent_dropout,
                    input_shape=(X_train.shape[1], X_train.shape[2])))
@@ -265,11 +159,17 @@ def build_model(hp):
     #                             input_shape=(n_timestamps, n_features)))
     # model.add(Dense(n_future, activation='linear'))
 
-    model.compile(optimizer=opti,
-                  loss=parameters['loss_function'],
-                  metrics=[tf.keras.metrics.RootMeanSquaredError(),
-                           tf.keras.metrics.MeanAbsoluteError(),
-                           tf.keras.metrics.MeanSquaredError()])
+
+    # -------------------------------- LEARNING RATE -----------------------------
+    lr = 0.001  # default
+    # lr = parameters['learning_rate']
+    # lr = hp.Choice("learning_rate", values=[5e-6, 1e-4, 1e-5])
+
+    opti = ut.get_optimizer(optimizer=parameters['optimizer'],
+                            learning_rate=lr)
+
+    model = md.compile_model(model, opti, parameters['loss_function'])
+
     return model
 
 
@@ -277,7 +177,6 @@ class MyTuner(keras_tuner.tuners.BayesianOptimization):
     def run_trial(self, trial, *args, **kwargs):
         kwargs['batch_size'] = trial.hyperparameters.Int('batch_size', 32, 96, step=32, default=64)
         return super(MyTuner, self).run_trial(trial, *args, **kwargs)
-
 
 tuner = keras_tuner.tuners.BayesianOptimization(#MyTuner(
     build_model,
@@ -292,8 +191,8 @@ tuner.search(
     y=y_train,
     epochs=parameters['n_epochs'],
     batch_size=parameters['batch_size'],
-    callbacks=[early_stopping, reduce_lr], #reduce_lr  hist_callback
-    validation_data=(X_val, y_val)
+    callbacks=my_callbacks, #reduce_lr  hist_callback
+    validation_data=(X_train, y_train)
 )
 
 # Get the optimal hyperparameters

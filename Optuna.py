@@ -1,27 +1,25 @@
+import warnings
+
 import tensorflow as tf
 import tensorflow.keras as keras
 from optuna.integration import TFKerasPruningCallback, KerasPruningCallback
 from optuna.integration.pytorch_lightning import Trainer
 from optuna.trial import TrialState
-# from optuna.visualization.matplotlib import plot_optimization_history, plot_intermediate_values, plot_contour,
-#     plot_param_importances
 from optuna.visualization import plot_optimization_history, plot_intermediate_values, plot_contour, \
     plot_param_importances
-from keras.layers import PReLU, RepeatVector, TimeDistributed
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import Dense
 from keras import Input, Model
 from tensorflow.keras.layers import Dropout
 import Utility as ut
-import DataRetrive as es
-import numpy as np
-import pandas as pd
 import neptune.new as neptune
 from tensorflow.keras.regularizers import L1L2
 import sklearn.metrics as metrics
 from tensorflow.keras.activations import elu, relu, tanh
 import optuna
 import Callbacks as cb
+import Models as md
+warnings.simplefilter("ignore", UserWarning)
 
 tags = ['LSTM_WS', 'Vanilla', 'InputUnits', '64']
 run = neptune.init_run(
@@ -31,21 +29,22 @@ run = neptune.init_run(
 )  # your credentials
 
 parameters = {
-    "time_window": 40,
+    "time_window": 120,
     "min_hidden_layers": 2,
     "max_hidden_layers": 2,
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 7e-6,
-    "n_epochs": 40,
+    "learning_rate": 8e-6,
+    "learning_rate_tg": 8e-7,
+    "n_epochs": 50,
     'dropout': 0.0,
     "label": 'Pitch',
     "val_split": 0,
-    "max_trials": 12,
+    "max_trials": 15,
     "patience": 5,
     "filter_in": 'none',  # kalman wiener simple none
     "filter_out": 'none',  # kalman wiener simple none
-    "optimizer": 'adam', #adam
+    "optimizer": 'adam',  # adam
     "activation": 'tanh',  # tanh or relu or elu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
@@ -53,92 +52,12 @@ parameters = {
 
 ut.set_seed()
 
-# data = es.retriveDataSet(False)
-#
-# if (data is None):
-#     data = es.getDataSet()
-#     es.saveDataSet(data)
-# if (data.empty):
-#     print('Is the DataFrame empty!')
-#     raise SystemExit
-#
-# # ['Datetime','SinkMin_AP','YawRate','Bs','Heel','Pitch', 'Lwy', 'Tws']
-# data = data.drop(['Datetime', 'Bs', 'YawRate', 'Heel', 'Lwy', 'Tws', 'SinkMin_AP'], axis=1)
-# data.dropna(inplace=True)
-#
-# if parameters['sampling'] > 1:
-#     data = data.rolling(parameters['sampling']).mean()
-#     data = data.iloc[::parameters['sampling'], :]
-#     data.dropna(inplace=True)
-#
-# # get the label array
-# yi = data[parameters['label']].values
-# # get the days of sailing
-# zi = data['Day'].values
-# # get the index of the last racing day to be used as TestSet
-# itemindex = np.where(zi == 6)
-# test_index = itemindex[0][0]
-# test_index += 10000
-#
-# # remove from the DataFrame the colum of the label
-# data = data.drop(parameters['label'], axis=1)
-# Xi = data.values
-# yi = yi.reshape((len(yi), 1))
-#
-# # data.info()
-#
-# TEST_SPLIT = 1 - (test_index / len(Xi))  # Test Split to last racing day
-#
-# from sklearn.model_selection import train_test_split
-#
-# X_train, X_test, y_train, y_test = train_test_split(Xi, yi, test_size=TEST_SPLIT, shuffle=False)
-#
-# # Split Validation Set
-# if parameters['val_split'] == 0:
-#     X_val = X_test
-#     y_val = y_test
-# else:
-#     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=parameters['val_split'],
-#                                                       shuffle=False)  # 0.25 x 0.8 = 0.2
-#
-# # Scale the 3 dataset
-# if parameters['scaler'] == 'Standard':
-#     from sklearn.preprocessing import StandardScaler
-#
-#     scaler = StandardScaler()
-# elif parameters['scaler'] == 'Normalizer':
-#     from sklearn.preprocessing import Normalizer
-#
-#     scaler = Normalizer()
-# else:
-#     from sklearn.preprocessing import MinMaxScaler
-#
-#     scaler = MinMaxScaler(feature_range=(-1, 1))
-#
-# X_train = scaler.fit_transform(X_train)
-# X_val = scaler.fit_transform(X_val)
-# X_test = scaler.fit_transform(X_test)
-#
-# # covert into input/output
-# dataset = np.append(X_train, y_train, axis=1)
-# X_train, y_train = ut.split_sequences(dataset, parameters['time_window'], parameters['future_step'])
-# dataset = np.append(X_val, y_val, axis=1)
-# X_val, y_val = ut.split_sequences(dataset, parameters['time_window'], parameters['future_step'])
-# dataset = np.append(X_test, y_test, axis=1)
-# X_test, y_test = ut.split_sequences(dataset, parameters['time_window'], parameters['future_step'])
-#
-# # FreeUp some memeory
-# del (dataset)
-# del (data)
-# del (Xi)
-# del (yi)
-# del (zi)
-
-X_train, X_test, y_train, y_test = ut.clueanUpData(False, parameters['filter_in'], bestFeature = 0)
+X_train, X_test, y_train, y_test = ut.clueanUpData(False, parameters['filter_in'], bestFeature=0)
 
 X_train, X_test = ut.scalingData(X_train, X_test, parameters['scaler'])
 
-X_train, X_test, y_train, y_test = ut.toSplitSequence(X_train, X_test, y_train, y_test, parameters['time_window'], parameters['future_step'])
+X_train, X_test, y_train, y_test = ut.toSplitSequence(X_train, X_test, y_train, y_test, parameters['time_window'],
+                                                      parameters['future_step'])
 
 activation = ut.get_activation(parameters['activation'])
 
@@ -150,6 +69,8 @@ n_features = X_train.shape[2]
 n_future = y_train.shape[1]
 
 DEFAULT_RETURN = 0.4
+
+
 def objective(trial):
     tf.keras.backend.clear_session()
 
@@ -163,7 +84,7 @@ def objective(trial):
     l1 = 0.0
     l2 = 0.0
 
-    batch_size = 64#trial.suggest_categorical("batch_size", [32, 64, 128])
+    batch_size = 64  # trial.suggest_categorical("batch_size", [32, 64, 128])
     # batch_size = 64#trial.suggest_int("batchsize", 32, 128, step=32, log=False)
 
     if parameters['dropout'] > 0:
@@ -171,30 +92,30 @@ def objective(trial):
     else:
         recurrent_dropout = 0.0
 
-    input_units = trial.suggest_int("input_units", 128, 256, 64)
+    input_units = trial.suggest_int("input_units", 192, 320, 64)
     # output_units = trial.suggest_int("output_units", 64, 128, 64)
     # dense_units = trial.suggest_int("dense_units", 32, 64, 32)
-    #
-    # model = tf.keras.models.Sequential()
-    # model.add(LSTM(units=input_units,
-    #                return_sequences=True,
-    #                activation=activation,
-    #                kernel_regularizer=L1L2(l1=l1, l2=l2),
-    #                #recurrent_dropout=recurrent_dropout,
-    #                input_shape=(X_train.shape[1], X_train.shape[2])))
-    # for i in range(n_layers):
-    #     num_hidden = trial.suggest_int(f'n_units_l{i}', 128, 256, 128)
-    #     model.add(LSTM(num_hidden, return_sequences=True))
-    #     # p = trial.suggest_float("dropout_l{}".format(i), 0.0, parameters['dropout'])
-    #     # if(p>0):
-    #     #     model.add(Dropout(p))
-    # # model.add(TimeDistributed(Dense(y_train.shape[1], activation='linear')))
-    # model.add(LSTM(units=output_units, return_sequences=False))
-    # model.add(Dense(units=dense_units, activation='linear'))
-    # # if(recurrent_dropout>0):
-    # #     model.add(Dropout(recurrent_dropout))
-    # model.add(Dense(y_train.shape[1], activation='linear'))
 
+    # # model = tf.keras.models.Sequential()
+    # # model.add(LSTM(units=input_units,
+    # #                return_sequences=True,
+    # #                activation=activation,
+    # #                kernel_regularizer=L1L2(l1=l1, l2=l2),
+    # #                #recurrent_dropout=recurrent_dropout,
+    # #                input_shape=(X_train.shape[1], X_train.shape[2])))
+    # # for i in range(n_layers):
+    # #     num_hidden = trial.suggest_int(f'n_units_l{i}', 128, 256, 128)
+    # #     model.add(LSTM(num_hidden, return_sequences=True))
+    # #     # p = trial.suggest_float("dropout_l{}".format(i), 0.0, parameters['dropout'])
+    # #     # if(p>0):
+    # #     #     model.add(Dropout(p))
+    # # # model.add(TimeDistributed(Dense(y_train.shape[1], activation='linear')))
+    # # model.add(LSTM(units=output_units, return_sequences=False))
+    # # model.add(Dense(units=dense_units, activation='linear'))
+    # # # if(recurrent_dropout>0):
+    # # #     model.add(Dropout(recurrent_dropout))
+    # # model.add(Dense(y_train.shape[1], activation='linear'))
+    #
     input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
 
     lstm1 = LSTM(input_units, return_sequences=True, return_state=True, activation=activation)
@@ -209,23 +130,23 @@ def objective(trial):
 
     model = Model(input, output, name='model_LSTM_return_state')
 
+    # from tensorflow.keras.layers import Bidirectional
+    # model = tf.keras.models.Sequential()
+    # model.add(Bidirectional(LSTM(input_units, activation=activation), input_shape=(n_timestamps, n_features)))
+    # model.add(Dense(n_future, activation='linear'))
 
-    if parameters['optimizer'] == 'adam':
-        # lr = 0.0001 #default
-        #lr = parameters['learning_rate']
-        lr = trial.suggest_float('learning_rate', 1e-6, 1e-4, log=True)
-        #lr = trial.suggest_categorical("learning_rate", [5e-5, 1e-5, 5e-6])
-        opti = tf.keras.optimizers.Adam(learning_rate=lr)
-    else:
-        # lr = 0.01 #default
-        lr = trial.suggest_categorical("learning_rate", [0.01, 0.001])
-        momentum = trial.suggest_categorical("momentum", [0.9, 0.8, 0.7]) #0.9 default
-        nesterov = True #trial.suggest_categorical("nesterov", [True, False])
-        opti = tf.keras.optimizers.SGD(learning_rate=lr, decay=1e-6, momentum=momentum, nesterov=nesterov)
+    # -------------------------------- LEARNING RATE -----------------------------
+    # lr = 0.0001 #default
+    # lr = parameters['learning_rate']
+    lr = trial.suggest_float('learning_rate', 1e-6, 5e-5, log=True)
+    # lr = trial.suggest_categorical("learning_rate", [8e-6, 1e-5, 6e-6])
 
-    model.compile(loss='huber_loss', optimizer=opti,
-                  metrics=[tf.keras.metrics.RootMeanSquaredError(), tf.keras.metrics.MeanAbsoluteError(),
-                           tf.keras.metrics.MeanSquaredError()])
+    opti = ut.get_optimizer(optimizer=parameters['optimizer'],
+                            learning_rate=lr)
+
+    model = md.compile_model(model, opti, parameters['loss_function'])
+
+    # print(model.summary())
 
     my_callbacks = cb.callbacks(neptune=False,
                                 early=parameters['patience'] > 0,
@@ -233,26 +154,11 @@ def objective(trial):
                                 scheduler=False,
                                 run=run,
                                 opti=model.optimizer,
-                                target=1e-6
-                                )
+                                target=parameters['learning_rate_tg'],
+                                patience=2)
 
     my_callbacks.append(TFKerasPruningCallback(trial, "val_loss"))
-    # # Create callbacks for early stopping and pruning.
-    # callbacks = [
-    #     tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-    #                                      patience=parameters['patience'],
-    #                                      mode='min',
-    #                                      restore_best_weights=True),
-    #     TFKerasPruningCallback(trial, "val_loss"),
-    #     tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-    #                                                      factor=0.1,
-    #                                                      patience=2,
-    #                                                      verbose=1,
-    #                                                      mode='min',
-    #                                                      # min_delta=0.0001,
-    #                                                      cooldown=0,
-    #                                                      min_lr=1e-6)
-    # ]
+
     try:
         model.fit(
             X_train,
@@ -304,17 +210,9 @@ print("### Best trial ####")
 trial = study.best_trial
 print("  Value: {}".format(trial.value))
 
-# best = study.best_params
-# for x in best:
-#     print(x)
-
 print("  Params: ")
 for key, value in trial.params.items():
     print("    {}: {}".format(key, value))
-
-# best_model = create_model(study.best_trial)
-# best_model.fit(X_train, y_train)
-# print("Performance: ", model_performance(best_model))
 
 print("## DONE ##")
 

@@ -1,4 +1,4 @@
-from keras.layers import PReLU, RepeatVector, TimeDistributed
+from keras.layers import PReLU, RepeatVector, TimeDistributed, GRU
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Dropout
@@ -204,3 +204,22 @@ def create_uncompiled_model_tiny(n_timestamps, n_future, n_features, activation,
                        input_shape=(n_timestamps, n_features)))
     tmp_model.add(Dense(n_future))
     return tmp_model
+
+def create_uncompiled_gru(n_timestamps, n_future, n_features, layer_units, activation):
+    tmp_model = tf.keras.models.Sequential(name="GRU-Model")  # Model
+    tmp_model.add(Input(shape=(n_timestamps, n_features), name='Input-Layer'))  # Input Layer - need to speicfy the shape of inputs
+    tmp_model.add(Bidirectional(GRU(units=layer_units, activation=activation, recurrent_activation='sigmoid', stateful=False), name='Hidden-GRU-Encoder-Layer'))  # Encoder Layer
+    tmp_model.add(RepeatVector(n_timestamps, name='Repeat-Vector-Layer'))  # Repeat Vector
+    tmp_model.add(Bidirectional(GRU(units=layer_units, activation=activation, recurrent_activation='sigmoid', stateful=False, return_sequences=False),name='Hidden-GRU-Decoder-Layer'))  # Decoder Layer
+    tmp_model.add(Dense(units=1, activation='linear'), name='Output-Layer')  # Output Layer, Linear(x) = x
+    # tmp_model.add(TimeDistributed(Dense(units=1, activation='linear'), name='Output-Layer'))  # Output Layer, Linear(x) = x
+    return tmp_model
+
+
+def compile_model(model, optimizer, loss):
+    model.compile(optimizer=optimizer,
+                      loss=loss,
+                      metrics=[tf.keras.metrics.RootMeanSquaredError(),
+                               tf.keras.metrics.MeanAbsoluteError(),
+                               tf.keras.metrics.MeanSquaredError()])
+    return model
