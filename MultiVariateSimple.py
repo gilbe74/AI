@@ -48,7 +48,7 @@ parameters = {
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer or Robust or MaxAbsScaler
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
 }
-tags = ['LSTM_WS', 'TW=80', "ReturnState", "BS=64"]
+tags = ['LSTM_WS', 'TW=80', "ReturnState", "BS=64", "Shuffle"]
 
 ut.set_seed()
 
@@ -122,7 +122,7 @@ history = model.fit(X_train, y_train,
                 epochs=parameters['n_epochs'],
                 batch_size=parameters['batch_size'],
                 validation_data=(X_test, y_test),
-                shuffle=False,
+                shuffle=True,
                 callbacks=my_callbacks
                 )
 

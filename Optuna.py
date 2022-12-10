@@ -13,9 +13,6 @@ from keras import Input, Model
 from tensorflow.keras.layers import Dropout
 import Utility as ut
 import neptune.new as neptune
-from tensorflow.keras.regularizers import L1L2
-import sklearn.metrics as metrics
-from tensorflow.keras.activations import elu, relu, tanh
 import optuna
 import Callbacks as cb
 import Models as md
@@ -36,7 +33,7 @@ parameters = {
     "sampling": 1,
     "learning_rate": 8e-6,
     "learning_rate_tg": 8e-7,
-    "n_epochs": 50,
+    "n_epochs": 60,
     'dropout': 0.0,
     "label": 'Pitch',
     "val_split": 0,
