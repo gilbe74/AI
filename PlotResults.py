@@ -15,10 +15,10 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
     # Log predictions as table
     test_pred = model.predict(X)
 
-    if run != None:
-        for j, metric in enumerate(test_results):
+    for j, metric in enumerate(test_results):
+        if run != None:
             run['test/scores/{}'.format(model.metrics_names[j])] = metric
-            print("Metrics {}".format(model.metrics_names[j]), round(metric, 3))
+        print("Metrics {}".format(model.metrics_names[j]), round(metric, 3))
 
     print("Error Valutation")
 

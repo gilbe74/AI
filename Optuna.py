@@ -26,7 +26,7 @@ run = neptune.init_run(
 )  # your credentials
 
 parameters = {
-    "time_window": 120,
+    "time_window": 160,
     "min_hidden_layers": 2,
     "max_hidden_layers": 2,
     "future_step": 1,
@@ -37,7 +37,7 @@ parameters = {
     'dropout': 0.0,
     "label": 'Pitch',
     "val_split": 0,
-    "max_trials": 15,
+    "max_trials": 6,
     "patience": 5,
     "filter_in": 'none',  # kalman wiener simple none
     "filter_out": 'none',  # kalman wiener simple none
@@ -89,7 +89,7 @@ def objective(trial):
     else:
         recurrent_dropout = 0.0
 
-    input_units = trial.suggest_int("input_units", 192, 320, 64)
+    input_units = 256#trial.suggest_int("input_units", 256, 320, 64)
     # output_units = trial.suggest_int("output_units", 64, 128, 64)
     # dense_units = trial.suggest_int("dense_units", 32, 64, 32)
 

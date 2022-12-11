@@ -53,7 +53,7 @@ def create_uncompiled_model_bidirectional_seq2seq_time(n_timestamps, n_future, n
     tmp_model.add(TimeDistributed(Dense(n_future, activation='linear')))
     return tmp_model
 
-def create_uncompiled_model_bidirectional_E2D2(n_timestamps, n_future, n_features, layer_units, activation):
+def create_uncompiled_model__E2D2(n_timestamps, n_future, n_features, layer_units, activation):
     encoder_inputs = tf.keras.layers.Input(shape=(n_timestamps, n_features))
 
     encoder_l1 = tf.keras.layers.LSTM(layer_units, return_sequences=True, return_state=True)
@@ -73,7 +73,7 @@ def create_uncompiled_model_bidirectional_E2D2(n_timestamps, n_future, n_feature
     tmp_model = tf.keras.models.Model(encoder_inputs, decoder_outputs2)
     return tmp_model
 
-def create_uncompiled_model_bidirectional_E1D1(n_timestamps, n_future, n_features, layer_units, activation):
+def create_uncompiled_model_E1D1(n_timestamps, n_future, n_features, layer_units, activation):
     encoder_inputs = tf.keras.layers.Input(shape=(n_timestamps, n_features))
     encoder_l1 = tf.keras.layers.LSTM(layer_units, return_state=True)
     encoder_outputs1 = encoder_l1(encoder_inputs)

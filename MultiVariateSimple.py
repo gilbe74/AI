@@ -28,12 +28,12 @@ NEPTUNE_TOKEN = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJ
 
 parameters = {
     "debug": False,
-    "time_window": 80,
+    "time_window": 120,
     "layers": [384,128],
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 1.7e-5,
-    "learning_rate_tg": 8e-7,
+    "learning_rate": 7.145656155471698e-06,
+    "learning_rate_tg": 7e-7,
     "l1": 0.0,
     "l2": 0.0,
     "batch_size": 64,
@@ -48,7 +48,7 @@ parameters = {
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer or Robust or MaxAbsScaler
     "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
 }
-tags = ['LSTM_WS', 'TW=80', "ReturnState", "BS=64", "Shuffle"]
+tags = ['LSTM_WS', 'TW=120', "ReturnState", "BS=64"]
 
 ut.set_seed()
 
@@ -65,6 +65,8 @@ if(NEPTUNE):
         api_token=NEPTUNE_TOKEN,
     )  # your credentials
     run["model/parameters"] = parameters
+else:
+    run = None
 
 n_timestamps = X_train.shape[1]
 # Number of output timestamps
@@ -112,7 +114,9 @@ def myNeptuneCallback(run):
         log_on_batch=True
     )
     return neptune_cbk
-my_callbacks.append(myNeptuneCallback(run))
+
+if NEPTUNE:
+    my_callbacks.append(myNeptuneCallback(run))
 
 from time import time
 start_at = time()
@@ -122,7 +126,7 @@ history = model.fit(X_train, y_train,
                 epochs=parameters['n_epochs'],
                 batch_size=parameters['batch_size'],
                 validation_data=(X_test, y_test),
-                shuffle=True,
+                shuffle=False,
                 callbacks=my_callbacks
                 )
 

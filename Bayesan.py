@@ -110,24 +110,24 @@ def build_model(hp):
     else:
         recurrent_dropout = 0.0
 
-    input_units = hp.Int('input_unit', min_value=n_features, max_value=128)
+    input_units = 256 #hp.Int('input_unit', min_value=n_features, max_value=128)
     # output_units = hp.Int('output_units', min_value=256, max_value=768, step=256, default=512)
 
     # STACKED
-    model = tf.keras.models.Sequential()
-    model.add(LSTM(input_units,
-                   return_sequences=False,
-                   activation=activation,  # tanh
-                   kernel_regularizer=L1L2(l1=l1, l2=l2),
-                   recurrent_dropout=recurrent_dropout,
-                   input_shape=(X_train.shape[1], X_train.shape[2])))
-    # for i in range(n_layers):
-    #     model.add(LSTM(hp.Int(f'lstm_{i}_units', min_value=256, max_value=768, step=512), return_sequences=True))
-    # model.add(LSTM(hp.Int('layer_2_neurons', min_value=128, max_value=384, step=128, default=256)))
-    # # model.add(keras.layers.Dropout(hp.Float('Dropout_rate',min_value=0,max_value=0.1,step=0.1)))
-    # # model.add(Dense(hp.Int('dense_neurons', min_value=64, max_value=192, step=64, default= 64), activation='linear'))
-    # # model.add(Dense(units=64, activation='linear'))
-    model.add(Dense(y_train.shape[1], activation='linear'))
+    # model = tf.keras.models.Sequential()
+    # model.add(LSTM(input_units,
+    #                return_sequences=False,
+    #                activation=activation,  # tanh
+    #                kernel_regularizer=L1L2(l1=l1, l2=l2),
+    #                recurrent_dropout=recurrent_dropout,
+    #                input_shape=(X_train.shape[1], X_train.shape[2])))
+    # # for i in range(n_layers):
+    # #     model.add(LSTM(hp.Int(f'lstm_{i}_units', min_value=256, max_value=768, step=512), return_sequences=True))
+    # # model.add(LSTM(hp.Int('layer_2_neurons', min_value=128, max_value=384, step=128, default=256)))
+    # # # model.add(keras.layers.Dropout(hp.Float('Dropout_rate',min_value=0,max_value=0.1,step=0.1)))
+    # # # model.add(Dense(hp.Int('dense_neurons', min_value=64, max_value=192, step=64, default= 64), activation='linear'))
+    # # # model.add(Dense(units=64, activation='linear'))
+    # model.add(Dense(y_train.shape[1], activation='linear'))
 
     #STATE = TRUE
     # input = Input(shape=(n_timesteps, n_features))
@@ -161,9 +161,24 @@ def build_model(hp):
 
 
     # -------------------------------- LEARNING RATE -----------------------------
-    lr = 0.001  # default
+
+    input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
+
+    lstm1 = LSTM(input_units, return_sequences=True, return_state=True, activation=activation)
+    all_state_h, state_h, state_c = lstm1(input)
+    states = [state_h, state_c]
+
+    lstm2 = LSTM(input_units, return_sequences=False, activation=activation)
+    all_state_h = lstm2(all_state_h, initial_state=states)
+
+    dense = Dense(n_future, activation='linear')
+    output = dense(all_state_h)
+
+    model = Model(input, output, name='model_LSTM_return_state')
+
+    # lr = 0.001  # default
     # lr = parameters['learning_rate']
-    # lr = hp.Choice("learning_rate", values=[5e-6, 1e-4, 1e-5])
+    lr = hp.Choice("learning_rate", values=[5e-6, 1e-4, 1e-5])
 
     opti = ut.get_optimizer(optimizer=parameters['optimizer'],
                             learning_rate=lr)
