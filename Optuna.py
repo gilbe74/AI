@@ -18,7 +18,7 @@ import Callbacks as cb
 import Models as md
 warnings.simplefilter("ignore", UserWarning)
 
-tags = ['LSTM_WS', 'Vanilla', 'InputUnits', '64']
+tags = ['LSTM_WS', 'Bidirectional', '64']
 run = neptune.init_run(
     project="gilberto.nobili/Optuna",
     api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIyNmNjMTI3Ni02ZjkwLTRiMTgtOGI5Zi03NzczMWJlODIwYTIifQ==",
@@ -26,7 +26,7 @@ run = neptune.init_run(
 )  # your credentials
 
 parameters = {
-    "time_window": 160,
+    "time_window": 40,
     "min_hidden_layers": 2,
     "max_hidden_layers": 2,
     "future_step": 1,
@@ -37,7 +37,7 @@ parameters = {
     'dropout': 0.0,
     "label": 'Pitch',
     "val_split": 0,
-    "max_trials": 6,
+    "max_trials": 21,
     "patience": 5,
     "filter_in": 'none',  # kalman wiener simple none
     "filter_out": 'none',  # kalman wiener simple none
@@ -89,7 +89,7 @@ def objective(trial):
     else:
         recurrent_dropout = 0.0
 
-    input_units = 256#trial.suggest_int("input_units", 256, 320, 64)
+    input_units = trial.suggest_int("input_units", 256, 320, 32)
     # output_units = trial.suggest_int("output_units", 64, 128, 64)
     # dense_units = trial.suggest_int("dense_units", 32, 64, 32)
 
@@ -112,31 +112,31 @@ def objective(trial):
     # # # if(recurrent_dropout>0):
     # # #     model.add(Dropout(recurrent_dropout))
     # # model.add(Dense(y_train.shape[1], activation='linear'))
+    #-----------------------------------------------------------------RETURN STATE
+    # input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
     #
-    input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
+    # lstm1 = LSTM(input_units, return_sequences=True, return_state=True, activation=activation)
+    # all_state_h, state_h, state_c = lstm1(input)
+    # states = [state_h, state_c]
+    #
+    # lstm2 = LSTM(input_units, return_sequences=False, activation=activation)
+    # all_state_h = lstm2(all_state_h, initial_state=states)
+    #
+    # dense = Dense(n_future, activation='linear')
+    # output = dense(all_state_h)
+    #
+    # model = Model(input, output, name='model_LSTM_return_state')
 
-    lstm1 = LSTM(input_units, return_sequences=True, return_state=True, activation=activation)
-    all_state_h, state_h, state_c = lstm1(input)
-    states = [state_h, state_c]
-
-    lstm2 = LSTM(input_units, return_sequences=False, activation=activation)
-    all_state_h = lstm2(all_state_h, initial_state=states)
-
-    dense = Dense(n_future, activation='linear')
-    output = dense(all_state_h)
-
-    model = Model(input, output, name='model_LSTM_return_state')
-
-    # from tensorflow.keras.layers import Bidirectional
-    # model = tf.keras.models.Sequential()
-    # model.add(Bidirectional(LSTM(input_units, activation=activation), input_shape=(n_timestamps, n_features)))
-    # model.add(Dense(n_future, activation='linear'))
+    from tensorflow.keras.layers import Bidirectional
+    model = tf.keras.models.Sequential()
+    model.add(Bidirectional(LSTM(input_units, activation=activation), input_shape=(n_timestamps, n_features)))
+    model.add(Dense(n_future, activation='linear'))
 
     # -------------------------------- LEARNING RATE -----------------------------
     # lr = 0.0001 #default
     # lr = parameters['learning_rate']
-    lr = trial.suggest_float('learning_rate', 1e-6, 5e-5, log=True)
-    # lr = trial.suggest_categorical("learning_rate", [8e-6, 1e-5, 6e-6])
+    # lr = trial.suggest_float('learning_rate', 7e-6, 9e-6, log=True)
+    lr = trial.suggest_categorical("learning_rate", [7e-6, 8e-6, 9e-6])
 
     opti = ut.get_optimizer(optimizer=parameters['optimizer'],
                             learning_rate=lr)

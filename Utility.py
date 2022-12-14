@@ -149,14 +149,14 @@ def simpleFilterSerie(x, error = 0.02):
     x = pd.DataFrame(new_array)
     return x
 
-def wienerFilterDataframe(x, window=11):
+def wienerFilterDataframe(x, window=3):
     from scipy.signal import wiener
     for i, column in enumerate(x.columns):
         new_array = wiener(x[column], (window))
         x[column] = pd.DataFrame(new_array)
     return x
 
-def wienerFilterSeries(x, window=11):
+def wienerFilterSeries(x, window=3):
     from scipy.signal import wiener
     new_array = wiener(x,(window))
     x = pd.DataFrame(new_array)
@@ -199,7 +199,7 @@ def scalingData(training, testing, scalingAlgorithm = 'Standard'):
 
     return X_train, X_test
 
-def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pitch', printLabel = False):
+def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pitch', printLabel = False, filterLabel = False):
     import DataRetrive as es
     data = es.retriveDataSet(reload)
 
@@ -247,13 +247,16 @@ def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pit
 
         if filter == 'simple':
             clean_data = simpleFilterDataframe(clean_data)
-            label = simpleFilterSerie(label)
+            if filterLabel:
+                label = simpleFilterSerie(label)
         elif filter == 'kalman':
             clean_data = kalmanFilterDataframe(clean_data)
-            label = kalmanFilterSeries(label)
+            if filterLabel:
+                label = kalmanFilterSeries(label)
         else:
             clean_data = wienerFilterDataframe(clean_data)
-            label = wienerFilterSeries(label)
+            if filterLabel:
+                label = wienerFilterSeries(label)
 
         clean_data["isStbd"] = isStbd_train
         clean_data["armDown"] = armDown_train
@@ -297,7 +300,7 @@ def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pit
         pltDataSet.ion()
         pltDataSet.draw()
         pltDataSet.pause(0.1)
-        pltDataSet.show(block=False)
+        pltDataSet.show(block=True)
 
     del (label_orig)
     del(clean_data)
@@ -305,6 +308,7 @@ def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pit
     del(yi)
 
     return X_train, X_test, y_train, y_test
+
 
 def toSplitSequence(X_train, X_test, y_train, y_test, n_timestamps = 20, n_future = 1):
     dataset = np.append(X_train, y_train, axis=1)

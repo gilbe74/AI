@@ -2,18 +2,40 @@ import math
 import Utility as ut
 import numpy as np
 import pandas as pd
+
 import tensorflow.keras as keras
-def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, saveDelta = True, SENSOR_ERROR = 0.05):
+
+def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, saveDelta = True, SENSOR_ERROR = 0.05, filter_out = 'none'):
     print("Valuate the model")
 
     SINGLEPOINT = int(len(X) / 2)
 
-    # best_model = keras.models.load_model('best_model.h5')
+    if model == None:
+        model = keras.models.load_model('best_model.h5')
 
     # Evaluate the model on the test data using `evaluate`
     test_results = model.evaluate(X, y, batch_size=batch_size)
     # Log predictions as table
     test_pred = model.predict(X)
+
+    test_pred_filtered = pd.DataFrame(test_pred)
+    if filter_out != 'none':
+        print("Filtering prediction with ", filter_out)
+        if filter_out == 'simple':
+            test_pred_filtered = ut.simpleFilterSerie(test_pred_filtered)
+        elif filter_out == 'kalman':
+            test_pred_filtered = ut.kalmanFilterSeries(test_pred)
+        else:
+            test_pred_filtered = ut.wienerFilterSeries(test_pred)
+        test_pred_filtered = test_pred_filtered.to_numpy()
+    else:
+        print("No Filtering")
+        test_pred_filtered = test_pred.copy()
+
+    test_prediction_NON_filtered = test_pred
+    test_pred = test_pred_filtered
+    del (test_pred_filtered)
+
 
     for j, metric in enumerate(test_results):
         if run != None:
@@ -51,26 +73,27 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
     y_test = y[:, 0]
     y_test_pred_single = test_pred[:, 0]
 
-    # Generate predictions (probabilities -- the output of the last layer)
-    print("Generate predictions for 1 samples - ", SINGLEPOINT)
-    predictions = model.predict(X[SINGLEPOINT:SINGLEPOINT + 1])
-    print('>Expected=%.2f, Predicted=%.2f' % (y_test[SINGLEPOINT:SINGLEPOINT + 1], predictions))
+    # R2
+    import sklearn.metrics as metrics
+    r2 = metrics.r2_score(y_test, test_pred)
+    print("R2 Testing: ", r2)
+    rmse = np.sqrt(metrics.mean_squared_error(y_test, test_pred))
+    print('RMSD ( Root Mean Squared Error ) :', rmse)
 
-    # model.reset_states()
-    # re-define model
-    # n_batch = 1
-    # new_model = tf.keras.models.Sequential()
-    # new_model.add(LSTM(n_features + 1, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
-    # new_model.add(LSTM((int)((n_features + 2) * 2 / 3)))
-    # new_model.add(Dense(n_steps_out, activation='linear'))
-    # # copy weights
-    # old_weights = model.get_weights()
-    # new_model.set_weights(old_weights)
-    # # compile model
-    # new_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss="mean_squared_error")
-    # # new_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE), loss=tf.keras.losses.Huber())
-    # yhat = new_model.predict(X_test[start:start + 1])
-    # print('>Expected=%.2f, Predicted=%.2f' % (y_test[start:start + 1], yhat))
+    try:
+        # Generate predictions (probabilities -- the output of the last layer)
+        print("Generate predictions for 1 samples - ", SINGLEPOINT)
+        predictions = model.predict(X[SINGLEPOINT:SINGLEPOINT + 1])
+        predictions = predictions[:, 0]
+        predictions.reshape(-1)
+        print('>Expected=%.2f, Predicted=%.2f' % (y_test[SINGLEPOINT:SINGLEPOINT + 1], predictions[0]))
+    except:
+        print("Error Generate predictions for 1 samples")
+
+    # # Generate predictions (probabilities -- the output of the last layer)
+    # print("Generate predictions for 1 samples - ", SINGLEPOINT)
+    # predictions = model.predict(X[SINGLEPOINT:SINGLEPOINT + 1])
+    # print('>Expected=%.2f, Predicted=%.2f' % (y_test[SINGLEPOINT:SINGLEPOINT + 1], predictions))
 
     import matplotlib.pyplot as pyplotMetrics
     fig, ax = pyplotMetrics.subplots(2, 1)
@@ -93,12 +116,12 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
     if run != None:
         run["evaluation/metrics"].upload(fig)
 
-    # R2
-    import sklearn.metrics as metrics
-    r2 = metrics.r2_score(y_test, test_pred)
-    print("R2 Testing: ", r2)
-    rmse = np.sqrt(metrics.mean_squared_error(y_test, test_pred))
-    print('RMSD ( Root Mean Squared Error ) :', rmse)
+    # # R2
+    # import sklearn.metrics as metrics
+    # r2 = metrics.r2_score(y_test, test_pred)
+    # print("R2 Testing: ", r2)
+    # rmse = np.sqrt(metrics.mean_squared_error(y_test, test_pred))
+    # print('RMSD ( Root Mean Squared Error ) :', rmse)
 
     if run != None:
         run["model/parameters/n_epochs"] = len(history.history['loss'])
@@ -106,14 +129,21 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
         run["test/scores/expected"] = y_test[SINGLEPOINT:SINGLEPOINT + 1]
         run["test/scores/predicted"] = predictions
 
+    test_prediction_NON_filtered = test_prediction_NON_filtered[:, 0]
+    test_prediction_NON_filtered = test_prediction_NON_filtered.reshape(-1)
+
     import matplotlib.pyplot as pltCoere
-    s1 = np.array(y_test_pred_single)
+    # y_test = y[:, 0]
+    s1 = np.array(test_pred[:, 0])
     s2 = np.array(y_test)
+    s3 = np.array(test_prediction_NON_filtered)
     fig, axs = pltCoere.subplots(2, 1, sharex=True)
     pltCoere.ion()
     axs[0].plot(np.arange(range_history), np.array(y_test), label='Real', color='#1f77b4')  # blue
-    axs[0].plot(np.arange(range_future), np.array(y_test_pred_single), label='Prediction LSTM', color='#ff7f0e',
+    axs[0].plot(np.arange(range_future), np.array(test_pred), label='Prediction LSTM', color='#ff7f0e',
                 alpha=0.8)
+    axs[0].plot(np.arange(range_future), s3, label='Prediction NoFilter', color='g',
+                alpha=0.7)
     if n_future > 1:
         axs[0].plot(range_forecast, np.array(test_pred[SINGLEPOINT]), label='Forecasted with LSTM', color='red')
     else:
@@ -140,6 +170,39 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
     fig.tight_layout()
     pltCoere.draw()
     pltCoere.pause(0.1)
+    # s1 = np.array(y_test_pred_single)
+    # s2 = np.array(y_test)
+    # fig, axs = pltCoere.subplots(2, 1, sharex=True)
+    # pltCoere.ion()
+    # axs[0].plot(np.arange(range_history), np.array(y_test), label='Real', color='#1f77b4')  # blue
+    # axs[0].plot(np.arange(range_future), np.array(y_test_pred_single), label='Prediction LSTM', color='#ff7f0e',
+    #             alpha=0.8)
+    # if n_future > 1:
+    #     axs[0].plot(range_forecast, np.array(test_pred[SINGLEPOINT]), label='Forecasted with LSTM', color='red')
+    # else:
+    #     axs[0].scatter(SINGLEPOINT, predictions, color="red", marker="x", s=70, label="Single")
+    # axs[0].legend(loc='upper right')
+    # # axs[0].set_xlabel('Time step' ,  fontsize=18)
+    # axs[0].set_ylabel('Pitch', fontsize=10)
+    # axs[0].legend(loc='upper right')
+    # axs[0].grid(True)
+    # # cxy, f = axs[1].cohere(s1, s2, 256, 1. / dt)
+    # axs[1].xcorr(s1, s2, usevlines=True, maxlags=10, normed=True, lw=2)
+    # axs[1].set_ylabel('coherence', fontsize=10)
+    # # adding grid to the graph
+    # x = np.arange(range_future)
+    # markerline, stemlines, baseline = pltCoere.stem(x, delta_df, '-', markerfmt=' ')
+    # pltCoere.setp(baseline, color='r', linewidth=2)
+    # axs[1].axhline(SENSOR_ERROR, color="red", linewidth=0.5)
+    # axs[1].axhline(-SENSOR_ERROR, color="red", linewidth=0.5)
+    # axs[1].grid(True)
+    # axs[1].axhline(0, color='green', lw=2)
+    # axs[1].set_xlabel('Time step', fontsize=10)
+    # axs[0].autoscale(axis='y', enable=True)
+    # axs[1].autoscale(axis='y', enable=True)
+    # fig.tight_layout()
+    # pltCoere.draw()
+    # pltCoere.pause(0.1)
     if run != None:
         run["evaluation/prediction"].upload(fig)
 

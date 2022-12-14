@@ -206,12 +206,12 @@ def create_uncompiled_model_tiny(n_timestamps, n_future, n_features, activation,
     return tmp_model
 
 def create_uncompiled_gru(n_timestamps, n_future, n_features, layer_units, activation):
-    tmp_model = tf.keras.models.Sequential(name="GRU-Model")  # Model
-    tmp_model.add(Input(shape=(n_timestamps, n_features), name='Input-Layer'))  # Input Layer - need to speicfy the shape of inputs
-    tmp_model.add(Bidirectional(GRU(units=layer_units, activation=activation, recurrent_activation='sigmoid', stateful=False), name='Hidden-GRU-Encoder-Layer'))  # Encoder Layer
-    tmp_model.add(RepeatVector(n_timestamps, name='Repeat-Vector-Layer'))  # Repeat Vector
-    tmp_model.add(Bidirectional(GRU(units=layer_units, activation=activation, recurrent_activation='sigmoid', stateful=False, return_sequences=False),name='Hidden-GRU-Decoder-Layer'))  # Decoder Layer
-    tmp_model.add(Dense(units=1, activation='linear'), name='Output-Layer')  # Output Layer, Linear(x) = x
+    tmp_model = tf.keras.models.Sequential()  # Model
+    tmp_model.add(Input(shape=(n_timestamps, n_features)))  # Input Layer - need to speicfy the shape of inputs
+    tmp_model.add(Bidirectional(GRU(units=layer_units, activation=activation, recurrent_activation='sigmoid', stateful=False)))  # Encoder Layer
+    tmp_model.add(RepeatVector(n_timestamps))  # Repeat Vector
+    tmp_model.add(Bidirectional(GRU(units=layer_units, activation=activation, recurrent_activation='sigmoid', stateful=False, return_sequences=False)))  # Decoder Layer
+    tmp_model.add(Dense(units=1, activation='linear'))  # Output Layer, Linear(x) = x
     # tmp_model.add(TimeDistributed(Dense(units=1, activation='linear'), name='Output-Layer'))  # Output Layer, Linear(x) = x
     return tmp_model
 
