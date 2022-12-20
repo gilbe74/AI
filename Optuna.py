@@ -18,7 +18,7 @@ import Callbacks as cb
 import Models as md
 warnings.simplefilter("ignore", UserWarning)
 
-tags = ['LSTM_WS', 'Bidirectional', '64']
+tags = ['LSTM_WS', 'Stacked']
 run = neptune.init_run(
     project="gilberto.nobili/Optuna",
     api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIyNmNjMTI3Ni02ZjkwLTRiMTgtOGI5Zi03NzczMWJlODIwYTIifQ==",
@@ -26,25 +26,26 @@ run = neptune.init_run(
 )  # your credentials
 
 parameters = {
-    "time_window": 40,
+    "time_window": 100,
     "min_hidden_layers": 2,
     "max_hidden_layers": 2,
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 8e-6,
-    "learning_rate_tg": 8e-7,
-    "n_epochs": 60,
-    'dropout': 0.0,
+    "learning_rate": 7e-6,
+    "learning_rate_tg": 6e-7,
+    "n_epochs": 70,
+    'dropout': 0,
     "label": 'Pitch',
     "val_split": 0,
-    "max_trials": 21,
+    "max_trials": 9,
     "patience": 5,
     "filter_in": 'none',  # kalman wiener simple none
     "filter_out": 'none',  # kalman wiener simple none
     "optimizer": 'adam',  # adam
     "activation": 'tanh',  # tanh or relu or elu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer
-    "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
+    "loss_function": 'mean_absolute_error',  # huber_loss or mean_squared_error or log_cosh or mean_absolute_error
+    "loss_metrics": 'mean_absolute_error' #val_loss or mean_absolute_error
 }
 
 ut.set_seed()
@@ -56,7 +57,7 @@ X_train, X_test = ut.scalingData(X_train, X_test, parameters['scaler'])
 X_train, X_test, y_train, y_test = ut.toSplitSequence(X_train, X_test, y_train, y_test, parameters['time_window'],
                                                       parameters['future_step'])
 
-activation = ut.get_activation(parameters['activation'])
+# activation = ut.get_activation(parameters['activation'])
 
 # Number history timestamps
 n_timestamps = X_train.shape[1]
@@ -71,25 +72,20 @@ DEFAULT_RETURN = 0.4
 def objective(trial):
     tf.keras.backend.clear_session()
 
-    if parameters['max_hidden_layers'] > parameters['min_hidden_layers']:
-        n_layers = trial.suggest_int("n_layers", parameters['min_hidden_layers'], parameters['max_hidden_layers'])
-    else:
-        n_layers = parameters['max_hidden_layers']
+    # if parameters['max_hidden_layers'] > parameters['min_hidden_layers']:
+    #     n_layers = trial.suggest_int("n_layers", parameters['min_hidden_layers'], parameters['max_hidden_layers'])
+    # else:
+    #     n_layers = parameters['max_hidden_layers']
 
     # l1 = trial.suggest_categorical("kernel_regularizer_l1", [0.0, 0.01])
     # l2 = trial.suggest_categorical("kernel_regularizer_l2", [0.0, 0.01])
     l1 = 0.0
     l2 = 0.0
 
-    batch_size = 64  # trial.suggest_categorical("batch_size", [32, 64, 128])
-    # batch_size = 64#trial.suggest_int("batchsize", 32, 128, step=32, log=False)
+    #batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
+    batch_size = 64#trial.suggest_int("batchsize", 32, 128, step=32, log=False)
 
-    if parameters['dropout'] > 0:
-        recurrent_dropout = trial.suggest_float('recurrent_dropout', 0.0, parameters['dropout'], step=0.1)
-    else:
-        recurrent_dropout = 0.0
-
-    input_units = trial.suggest_int("input_units", 256, 320, 32)
+    input_units = 256#trial.suggest_int("input_units", 256, 320, 64)
     # output_units = trial.suggest_int("output_units", 64, 128, 64)
     # dense_units = trial.suggest_int("dense_units", 32, 64, 32)
 
@@ -112,35 +108,46 @@ def objective(trial):
     # # # if(recurrent_dropout>0):
     # # #     model.add(Dropout(recurrent_dropout))
     # # model.add(Dense(y_train.shape[1], activation='linear'))
-    #-----------------------------------------------------------------RETURN STATE
-    # input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
     #
-    # lstm1 = LSTM(input_units, return_sequences=True, return_state=True, activation=activation)
-    # all_state_h, state_h, state_c = lstm1(input)
-    # states = [state_h, state_c]
-    #
-    # lstm2 = LSTM(input_units, return_sequences=False, activation=activation)
-    # all_state_h = lstm2(all_state_h, initial_state=states)
-    #
-    # dense = Dense(n_future, activation='linear')
-    # output = dense(all_state_h)
-    #
-    # model = Model(input, output, name='model_LSTM_return_state')
 
-    from tensorflow.keras.layers import Bidirectional
-    model = tf.keras.models.Sequential()
-    model.add(Bidirectional(LSTM(input_units, activation=activation), input_shape=(n_timestamps, n_features)))
-    model.add(Dense(n_future, activation='linear'))
+    # activation_function = trial.suggest_categorical("activation", ['relu', 'elu', 'tanh'])
+    # activation = ut.get_activation(activation_function)
+    activation = ut.get_activation(parameters['activation'])
+
+    input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
+
+    lstm1 = LSTM(input_units, return_sequences=True, return_state=True,
+                 kernel_regularizer=tf.keras.regularizers.L1L2(l1=l1, l2=l2),
+                 activation=activation)
+    all_state_h, state_h, state_c = lstm1(input)
+    states = [state_h, state_c]
+
+    lstm2 = LSTM(input_units, return_sequences=False, activation=activation)
+    all_state_h = lstm2(all_state_h, initial_state=states)
+
+    # dropoutLast = Dropout(0.1)
+    # all_state_h = dropoutLast(all_state_h)
+
+    dense = Dense(n_future, activation='linear')
+    output = dense(all_state_h)
+
+    model = Model(input, output, name='model_LSTM_return_state')
+
+    # from tensorflow.keras.layers import Bidirectional
+    # model = tf.keras.models.Sequential()
+    # model.add(Bidirectional(LSTM(input_units, activation=activation), input_shape=(n_timestamps, n_features)))
+    # model.add(Dense(n_future, activation='linear'))
 
     # -------------------------------- LEARNING RATE -----------------------------
     # lr = 0.0001 #default
     # lr = parameters['learning_rate']
-    # lr = trial.suggest_float('learning_rate', 7e-6, 9e-6, log=True)
-    lr = trial.suggest_categorical("learning_rate", [7e-6, 8e-6, 9e-6])
+    lr = trial.suggest_float('learning_rate', 7e-6, 1e-3, log=True)
+    # lr = trial.suggest_categorical("learning_rate", [7e-6, 8e-6])
 
     opti = ut.get_optimizer(optimizer=parameters['optimizer'],
                             learning_rate=lr)
 
+    # loss_function = trial.suggest_categorical("loss", ['huber_loss', 'mean_squared_error','log_cosh'])
     model = md.compile_model(model, opti, parameters['loss_function'])
 
     # print(model.summary())
@@ -152,9 +159,10 @@ def objective(trial):
                                 run=run,
                                 opti=model.optimizer,
                                 target=parameters['learning_rate_tg'],
-                                patience=2)
+                                patience=2,
+                                loss=parameters['loss_metrics'])
 
-    my_callbacks.append(TFKerasPruningCallback(trial, "val_loss"))
+    my_callbacks.append(TFKerasPruningCallback(trial,parameters['loss_metrics']))
 
     try:
         model.fit(
@@ -173,7 +181,7 @@ def objective(trial):
 
     # Evaluate the model accuracy on the validation set.
     score = model.evaluate(X_test, y_test, verbose=1)
-    return score[3]
+    return score[2] #3 MSE 2 MAE
     # return ut.model_performance(model)  # score[1]
 
 

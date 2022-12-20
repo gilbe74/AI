@@ -1,4 +1,5 @@
-from keras.layers import PReLU, RepeatVector, TimeDistributed, GRU
+from keras.layers import PReLU, RepeatVector, TimeDistributed, GRU, ConvLSTM2D, Flatten, Conv1D, MaxPooling1D, \
+    Concatenate, Reshape
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Dropout
@@ -15,13 +16,13 @@ def create_uncompiled_model_bidirectional_seq2seq_mine(n_timestamps, n_future, n
     tmp_model.add(Dense(n_future, activation='linear'))
     return tmp_model
 
-def create_uncompiled_model_bidirectional_seq4seq_time(n_timestamps, n_future, n_features, layer_units, activation):
+def create_uncompiled_model_bidirectional_seq4seq_time(n_timestamps, n_future, n_features, layer_units, activation, dropout = 0.0):
     tmp_model = tf.keras.models.Sequential()
     tmp_model.add(Bidirectional(LSTM(layer_units, return_sequences=True, activation=activation), input_shape=(n_timestamps, n_features)))
     tmp_model.add(Bidirectional(LSTM(layer_units)))
     tmp_model.add(RepeatVector(n_timestamps))
     tmp_model.add(Bidirectional(LSTM(layer_units, return_sequences = True)))
-    tmp_model.add(Bidirectional(LSTM(layer_units, return_sequences=True)))
+    tmp_model.add(Bidirectional(LSTM(layer_units, return_sequences=True, dropout=dropout)))
     tmp_model.add(TimeDistributed(Dense(n_future, activation='linear')))
     return tmp_model
 
@@ -32,7 +33,7 @@ def create_uncompiled_model_bidirectional_seq4seq(n_timestamps, n_future, n_feat
     tmp_model.add(RepeatVector(n_timestamps))
     tmp_model.add(Bidirectional(LSTM(layer_units, return_sequences = True)))
     tmp_model.add(Bidirectional(LSTM(layer_units, return_sequences=True)))
-    tmp_model.add(Bidirectional(LSTM(n_timestamps, return_sequences=False)))
+    tmp_model.add(Bidirectional(LSTM(n_features, return_sequences=False)))
     tmp_model.add(Dense(n_future, activation='linear'))
     return tmp_model
 
@@ -41,7 +42,7 @@ def create_uncompiled_model_bidirectional_seq2seq(n_timestamps, n_future, n_feat
     tmp_model.add(Bidirectional(LSTM(layer_units, activation=activation), input_shape = (n_timestamps, n_features)))
     tmp_model.add(RepeatVector(n_timestamps))
     tmp_model.add(Bidirectional(LSTM(layer_units, return_sequences=True)))
-    tmp_model.add(Bidirectional(LSTM(n_timestamps, return_sequences=False)))
+    tmp_model.add(Bidirectional(LSTM(n_features, return_sequences=False)))
     tmp_model.add(Dense(n_future, activation='linear'))
     return tmp_model
 
@@ -147,10 +148,12 @@ def create_uncompiled_model_ReturnState_ReturnSeq(n_timestamps, n_future, n_feat
     tmp_model = Model(input, output, name='model_LSTM_return_state')
     return tmp_model
 
-def create_uncompiled_model_ReturnState_ReturnSeq_2Layers(n_timestamps, n_future, n_features, layer_units, activation):
+def create_uncompiled_model_ReturnState_ReturnSeq_2Layers(n_timestamps, n_future, n_features, layer_units, activation, l1=0.0, l2=0.0):
     input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
 
-    lstm1 = LSTM(layer_units, return_sequences=True, return_state=True, activation=activation)
+    lstm1 = LSTM(layer_units, return_sequences=True, return_state=True,
+                 kernel_regularizer=tf.keras.regularizers.L1L2(l1=l1, l2=l2),
+                 activation=activation)
     all_state_h, state_h, state_c = lstm1(input)
     states = [state_h, state_c]
 
@@ -215,6 +218,51 @@ def create_uncompiled_gru(n_timestamps, n_future, n_features, layer_units, activ
     # tmp_model.add(TimeDistributed(Dense(units=1, activation='linear'), name='Output-Layer'))  # Output Layer, Linear(x) = x
     return tmp_model
 
+def create_uncompiled_gru_simple(n_timestamps, n_future, n_features, layer_units, activation):
+    tmp_model = tf.keras.models.Sequential()  # Model
+    tmp_model.add(Input(shape=(n_timestamps, n_features)))  # Input Layer - need to speicfy the shape of inputs
+    tmp_model.add(GRU(units=layer_units, activation=activation, recurrent_activation='sigmoid', stateful=False, return_sequences=True))
+    tmp_model.add(GRU(units=layer_units, activation=activation, recurrent_activation='sigmoid', stateful=False, return_sequences=False))
+    tmp_model.add(Dense(units=n_future, activation='linear'))  # Output Layer, Linear(x) = x
+    return tmp_model
+
+def create_uncompiled_conv(n_timestamps, n_future, n_features, layer_units, activation):
+    tmp_model = tf.keras.models.Sequential()  # Model
+    tmp_model.add(ConvLSTM2D(filters=64, kernel_size=(1, 2), activation='relu', input_shape=(n_timestamps, 1, n_future, n_features)))
+    tmp_model.add(Flatten())
+    tmp_model.add(Dense(1))
+    return tmp_model
+
+def create_CNN_LSTM(n_timestamps, n_future, n_features, layer_units, activation):
+    tmp_model = tf.keras.models.Sequential()  # Model
+    tmp_model.add(Conv1D(filters=64, kernel_size=9, activation=activation, input_shape = (n_timestamps, n_features)))
+    tmp_model.add(Conv1D(filters=64, kernel_size=11, activation=activation))
+    tmp_model.add(MaxPooling1D(pool_size=2))
+    tmp_model.add(Flatten())
+    tmp_model.add(RepeatVector(n_future))
+    tmp_model.add(LSTM(200, activation=activation, return_sequences = False))
+    tmp_model.add(Dense(units=n_features+1, activation='linear'))  # Output Layer, Linear(x) = x
+    tmp_model.add(Dense(units=n_future, activation='linear'))  # Output Layer, Linear(x) = x
+    return tmp_model
+
+def create_MultiHead(n_timestamps, n_future, n_features, layer_units, activation):
+    input_layer = Input(shape=(n_timestamps, n_features))
+    head_list = []
+    for i in range(0, n_features):
+        conv_layer_head = Conv1D(filters=4, kernel_size=7, activation=activation)(input_layer)
+        conv_layer_head_2 = Conv1D(filters=6, kernel_size=11, activation=activation)(conv_layer_head)
+        conv_layer_flatten = Flatten()(conv_layer_head_2)
+        head_list.append(conv_layer_flatten)
+
+    concat_cnn = Concatenate(axis=1)(head_list)
+    reshape = Reshape((head_list[0].shape[1], n_features))(concat_cnn)
+    lstm = LSTM(100, activation=activation)(reshape)
+    repeat = RepeatVector(n_future)(lstm)
+    lstm_2 = LSTM(100, activation=activation, return_sequences = True)(repeat)
+    dropout = Dropout(0.1)(lstm_2)
+    dense = Dense(n_future, activation='linear')(dropout)
+    tmp_model = Model(inputs=input_layer, outputs=dense)
+    return tmp_model
 
 def compile_model(model, optimizer, loss):
     model.compile(optimizer=optimizer,

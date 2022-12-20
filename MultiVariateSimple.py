@@ -17,6 +17,7 @@ import Callbacks as cb
 import Models as md
 absl.logging.set_verbosity(absl.logging.ERROR)
 warnings.simplefilter("ignore", NeptuneDeprecationWarning)
+from keras.utils.vis_utils import plot_model
 
 SAVE_SCORE = True
 NEPTUNE = True
@@ -28,16 +29,16 @@ NEPTUNE_TOKEN = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJ
 
 parameters = {
     "debug": False,
-    "time_window": 120,
+    "time_window": 40,
     "layers": [384,128],
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 7.145656155471698e-06,
+    "learning_rate": 7.2e-6,#7.5e-6
     "learning_rate_tg": 7e-7,
     "l1": 0.0,
     "l2": 0.0,
     "batch_size": 64,
-    "n_epochs": 50,
+    "n_epochs": 80,
     'dropout': 0,
     "label": 'Pitch',
     "patience": 6,
@@ -46,15 +47,19 @@ parameters = {
     "optimizer": 'adam',  # adam
     "activation": 'tanh', # tanh or relu or elu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer or Robust or MaxAbsScaler
-    "loss_function": 'huber_loss'  # huber_loss or mean_squared_error
+    "loss_function": 'log_cosh',  # huber_loss or mean_squared_error or log_cosh or mean_absolute_error or mse
+    "loss_metrics": 'val_loss' #mean_squared_error  mean_absolute_error val_loss
 }
-tags = ['LSTM_WS', 'TW=120', "ReturnState", "BS=64"]
+tags = ['LSTM_WS', 'TW=100', "ScalerFull", "CHECK"]
 
 ut.set_seed()
 
-X_train, X_test, y_train, y_test = ut.clueanUpData(False, parameters['filter_in'], bestFeature = 0)
+X_train, X_test, y_train, y_test = ut.clueanUpData(False, parameters['filter_in'], bestFeature = 0, winsorizeFactor=0.0)
 
+y_test_unscaled = y_test
 X_train, X_test = ut.scalingData(X_train, X_test, parameters['scaler'])
+scalery = None
+# X_train, X_test , y_train, y_test, scalery = ut.scalingDataFull(X_train, X_test, y_train, y_test, parameters['scaler'],parameters['scaler'])
 
 X_train, X_test, y_train, y_test = ut.toSplitSequence(X_train, X_test, y_train, y_test, parameters['time_window'], parameters['future_step'])
 
@@ -86,6 +91,8 @@ def create_model():
 
     tmp_model = md.compile_model(tmp_model, opti,parameters['loss_function'])
 
+    plot_model(tmp_model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
+
     # Log model summary
     if (NEPTUNE):
         tmp_model.summary(print_fn=lambda x: run['model/summary'].log(x))
@@ -105,7 +112,8 @@ my_callbacks = cb.callbacks(neptune=False,
                             run = run,
                             opti = model.optimizer,
                             target= parameters['learning_rate_tg'],
-                            patience = 3)
+                            patience = 3,
+                            loss=parameters['loss_metrics'])
 def myNeptuneCallback(run):
     neptune_cbk = NeptuneCallback(
         run=run,
@@ -140,7 +148,7 @@ if (NEPTUNE):
 
 if(PRINT):
     import PlotResults as pl
-    pl.PlotResult(model, X_test, y_test, history, run=run, batch_size=parameters['batch_size'], n_future=n_future, saveDelta=True, SENSOR_ERROR=0.05)
+    pl.PlotResult(model, X_test, y_test, history, run=run, batch_size=parameters['batch_size'], n_future=n_future, saveDelta=True, SENSOR_ERROR=0.05, scaler = scalery, test_unscaled = y_test_unscaled)
 
 if(NEPTUNE):
     run.stop()

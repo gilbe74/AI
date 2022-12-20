@@ -1,26 +1,11 @@
 import tensorflow as tf
-import tensorflow.keras as keras
-import tensorflow.keras.layers
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import Dense
-from tensorflow.keras.layers import Dropout
-from tensorflow.keras.layers import Bidirectional
 import keras_tuner
-from keras_tuner import BayesianOptimization
 import numpy as np
-import pandas as pd
-from numpy import hstack, minimum
-from pandas import DataFrame, concat
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-from sklearn.preprocessing import MinMaxScaler
-from numpy import mean, concatenate
-from numpy import array, hstack
-from pickle import dump, load
 import Utility as ut
 import warnings
 from keras import Input, Model
-from keras.layers import PReLU, RepeatVector, TimeDistributed
-from tensorflow.keras.activations import elu, relu, tanh
 
 warnings.simplefilter("ignore", UserWarning)
 np.random.seed(19740429)
@@ -39,16 +24,16 @@ DISPLAY = False
 
 parameters = {
     "debug": False,
-    "time_window": 40,
+    "time_window": 100,
     "min_hidden_layers": 0,
     "max_hidden_layers": 0,
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 8e-6,
-    "learning_rate_tg": 8e-7,
+    "learning_rate": 7e-6,
+    "learning_rate_tg": 6e-7,
     "batch_size": 64,
     "n_epochs": 70,
-    'dropout': 0,
+    'dropout': 0.2,
     "label": 'Pitch',
     "patience": 6,
     "val_split": 0,
@@ -100,13 +85,13 @@ def build_model(hp):
     # else:
     #     n_layers = 0
 
-    l1 = 0.0
-    l2 = 0.0
-    # l1 = hp.Choice("l1", values=[0.0, 0.01])
-    # l2 = hp.Choice("l2", values=[0.0, 0.01])
+    # l1 = 0.0
+    # l2 = 0.0
+    l1 = hp.Choice("l1", values=[0.0, 0.01])
+    l2 = hp.Choice("l2", values=[0.0, 0.01])
 
     if parameters['dropout'] > 0:
-        recurrent_dropout = hp.Float('recurrent_dropout', min_value=0.0, max_value=parameters['dropout'], step=0.1)
+        recurrent_dropout = hp.Float('recurrent_dropout', min_value=0.0, max_value=parameters['dropout'], step=0.2)
     else:
         recurrent_dropout = 0.0
 
@@ -164,7 +149,10 @@ def build_model(hp):
 
     input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
 
-    lstm1 = LSTM(input_units, return_sequences=True, return_state=True, activation=activation)
+    lstm1 = LSTM(input_units, return_sequences=True, return_state=True,
+                 kernel_regularizer=tf.keras.regularizers.L1L2(l1=l1, l2=l2),
+                 recurrent_dropout=recurrent_dropout,
+                 activation=activation)
     all_state_h, state_h, state_c = lstm1(input)
     states = [state_h, state_c]
 
@@ -178,7 +166,7 @@ def build_model(hp):
 
     # lr = 0.001  # default
     # lr = parameters['learning_rate']
-    lr = hp.Choice("learning_rate", values=[5e-6, 1e-4, 1e-5])
+    lr = hp.Choice("learning_rate", values=[7e-6, 6e-6, 9e-6])
 
     opti = ut.get_optimizer(optimizer=parameters['optimizer'],
                             learning_rate=lr)
@@ -219,12 +207,17 @@ best_model = tuner.get_best_models(num_models=1)[0]
 
 best_model.summary()
 
-test_pred = best_model.predict(X_test)
-import sklearn.metrics as metrics
+import PlotResults as pl
 
-r2 = metrics.r2_score(y_test, test_pred)
-print("R2 Testing: ", r2)
-rmse = np.sqrt(metrics.mean_squared_error(y_test, test_pred))
-print('RMSD ( Root Mean Squared Error ) :', rmse)
+pl.PlotResult(best_model, X_test, y_test, None, run=None, batch_size=parameters['batch_size'], n_future=n_future,
+              saveDelta=True, SENSOR_ERROR=0.05)
+
+# test_pred = best_model.predict(X_test)
+# import sklearn.metrics as metrics
+#
+# r2 = metrics.r2_score(y_test, test_pred)
+# print("R2 Testing: ", r2)
+# rmse = np.sqrt(metrics.mean_squared_error(y_test, test_pred))
+# print('RMSD ( Root Mean Squared Error ) :', rmse)
 
 print("## DONE ##")

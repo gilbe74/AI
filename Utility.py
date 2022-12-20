@@ -7,6 +7,8 @@ from numpy import minimum
 import tensorflow as tf
 import sklearn.metrics as metrics
 from tensorflow.keras.activations import elu, relu, tanh
+from tensorflow.python.keras.activations import sigmoid
+
 
 def set_seed(sd=19740429):
     from numpy.random import seed
@@ -149,14 +151,14 @@ def simpleFilterSerie(x, error = 0.02):
     x = pd.DataFrame(new_array)
     return x
 
-def wienerFilterDataframe(x, window=3):
+def wienerFilterDataframe(x, window=11):
     from scipy.signal import wiener
     for i, column in enumerate(x.columns):
         new_array = wiener(x[column], (window))
         x[column] = pd.DataFrame(new_array)
     return x
 
-def wienerFilterSeries(x, window=3):
+def wienerFilterSeries(x, window=11):
     from scipy.signal import wiener
     new_array = wiener(x,(window))
     x = pd.DataFrame(new_array)
@@ -172,6 +174,47 @@ def distance(a, b):
             return -(abs(abs(a) - abs(b)))
     else:
         return math.copysign((abs(a) + abs(b)), b)
+def scalingDataFull(training, testing, y_training, y_testing, scalingAlgorithm = 'Standard', scalingOut = None):
+    # Scale the 3 dataset
+    if scalingAlgorithm == 'None':
+        return training, testing, y_training,y_testing, None
+    elif scalingAlgorithm == 'Standard':
+        from sklearn.preprocessing import StandardScaler
+        scaler = StandardScaler()
+        scalerOut = StandardScaler()
+    elif scalingAlgorithm == 'Normalizer':
+        from sklearn.preprocessing import Normalizer
+        scaler = Normalizer()
+        scalerOut = Normalizer()
+    elif scalingAlgorithm == 'Robust':
+        from sklearn.preprocessing import RobustScaler
+        scaler = RobustScaler()
+        scalerOut = RobustScaler()
+    elif scalingAlgorithm == 'MaxAbsScaler':
+        from sklearn.preprocessing import MaxAbsScaler
+        scaler = MaxAbsScaler()
+        scalerOut = MaxAbsScaler()
+    elif scalingAlgorithm == 'Quantile':
+        from sklearn.preprocessing import QuantileTransformer
+        scaler = QuantileTransformer(n_quantiles=600, output_distribution='normal')
+        scalerOut = QuantileTransformer(n_quantiles=600, output_distribution='normal')()
+    else:
+        from sklearn.preprocessing import MinMaxScaler
+        scaler = MinMaxScaler(feature_range=(-1, 1))
+        scalerOut = MinMaxScaler(feature_range=(-1, 1))
+
+    scaler.fit(training)
+    X_train = scaler.transform(training)
+    X_test = scaler.transform(testing)
+
+    if scalingOut != None:
+        scalerOut.fit(y_training)
+        y_training = scalerOut.transform(y_training)
+        y_testing = scalerOut.transform(y_testing)
+    else:
+        scalerOut = None
+
+    return X_train, X_test, y_training, y_testing, scalerOut
 
 def scalingData(training, testing, scalingAlgorithm = 'Standard'):
     # Scale the 3 dataset
@@ -199,7 +242,7 @@ def scalingData(training, testing, scalingAlgorithm = 'Standard'):
 
     return X_train, X_test
 
-def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pitch', printLabel = False, filterLabel = False):
+def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pitch', printLabel = False, filterLabel = False, winsorizeFactor = 0):
     import DataRetrive as es
     data = es.retriveDataSet(reload)
 
@@ -234,7 +277,7 @@ def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pit
     # remove from the DataFrame the colum of the label
     clean_data = data.drop(labelName, axis=1)
 
-    if filter == None:
+    if filter == None or filter=='none':
         print("No Filtering on data")
     else:
         print("Filtering with ", filter)
@@ -266,7 +309,7 @@ def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pit
     if(bestFeature>0):
         from sklearn.feature_selection import SelectKBest
         from sklearn.feature_selection import f_regression
-        selector = SelectKBest(score_func=f_regression, k=11)
+        selector = SelectKBest(score_func=f_regression, k=bestFeature)
         clean_data = selector.fit_transform(clean_data, label)
         Xi = clean_data
         yi = label
@@ -280,6 +323,13 @@ def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pit
 
     from sklearn.model_selection import train_test_split
     X_train, X_test, y_train, y_test = train_test_split(Xi, yi, test_size=TEST_SPLIT, shuffle=False)
+
+    if winsorizeFactor > 0:
+        from scipy.stats.mstats import winsorize
+        winsorize(X_train, limits=[winsorizeFactor, winsorizeFactor])
+        winsorize(X_test, limits=[winsorizeFactor, winsorizeFactor])
+        winsorize(y_train, limits=[winsorizeFactor, winsorizeFactor])
+        winsorize(y_test, limits=[winsorizeFactor, winsorizeFactor])
 
     if (printLabel):
         import matplotlib.pyplot as pltDataSet
@@ -380,6 +430,8 @@ def get_activation(activation = "tanh"):
         act_func = relu
     elif activation == "elu":
         act_func = elu
+    elif activation == "sigmoid":
+        act_func = sigmoid
     else:
         act_func = tanh
     return act_func

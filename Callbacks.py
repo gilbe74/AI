@@ -33,10 +33,10 @@ def myReduceLR(metrics = 'val_loss', factor = 0.1, patience = 1, min_lr = 1e-6):
                                          min_lr=min_lr)
     return lr_callback
 
-def myReduceLrScaled(metrics = 'val_loss', target = 1e-4, patience = 2):
+def myReduceLrScaled(loss = 'val_loss', target = 1e-4, patience = 2):
     lr_callback = tf.keras.callbacks.ReduceLROnPlateau(
         # Metrics to be evaluated
-        monitor=metrics,
+        monitor=loss,
         # scale of a big factor to jump
         # directly on min_lr
         factor=0.00001,
@@ -171,21 +171,21 @@ def decay_schedule(epoch, lr):
         lr = lr * 0.1
     return lr
 
-def callbacks(neptune = True, early = True, lr = True, scheduler = False, run = None, opti = None, target = 1e-7, patience = 2):
+def callbacks(neptune = True, early = True, lr = True, scheduler = False, run = None, opti = None, target = 1e-7, patience = 2, loss = 'val_loss'):
     callbacks = []
     if neptune and run != None:
         callbacks.append(myNeptuneCallback(run))
     if early:
-        callbacks.append(myEarlyStoppingCallback())
+        callbacks.append(myEarlyStoppingCallback(loss, patience + 3))
     if lr:
-        callbacks.append(myReduceLrScaled(target=target, patience=patience))
+        callbacks.append(myReduceLrScaled(loss=loss, target=target, patience=patience))
     if scheduler:
         lr_scheduler = LearningRateScheduler(decay_schedule)
         callbacks.append(lr_scheduler)
     if opti !=None:
         callbacks.append(OnEpochStart(opti))
 
-    callbacks.append(tf.keras.callbacks.ModelCheckpoint(filepath='best_model.h5', monitor='val_loss', save_best_only=True))
+    callbacks.append(tf.keras.callbacks.ModelCheckpoint(filepath='best_model.h5', monitor=loss, save_best_only=True))
 
     return callbacks
 

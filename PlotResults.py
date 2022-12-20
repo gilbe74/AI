@@ -5,7 +5,7 @@ import pandas as pd
 
 import tensorflow.keras as keras
 
-def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, saveDelta = True, SENSOR_ERROR = 0.05, filter_out = 'none'):
+def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, saveDelta = True, SENSOR_ERROR = 0.05, filter_out = 'none', scaler = None, test_unscaled = None):
     print("Valuate the model")
 
     SINGLEPOINT = int(len(X) / 2)
@@ -17,6 +17,13 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
     test_results = model.evaluate(X, y, batch_size=batch_size)
     # Log predictions as table
     test_pred = model.predict(X)
+
+    if(scaler != None):
+        test_pred = scaler.inverse_transform(test_pred)
+        y = scaler.inverse_transform(y)
+        # lastElementIndex = len(test_pred) - 1
+        # # Removing the last element using slicing
+        # test_pred = test_pred[:lastElementIndex]
 
     test_pred_filtered = pd.DataFrame(test_pred)
     if filter_out != 'none':
@@ -95,26 +102,27 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
     # predictions = model.predict(X[SINGLEPOINT:SINGLEPOINT + 1])
     # print('>Expected=%.2f, Predicted=%.2f' % (y_test[SINGLEPOINT:SINGLEPOINT + 1], predictions))
 
-    import matplotlib.pyplot as pyplotMetrics
-    fig, ax = pyplotMetrics.subplots(2, 1)
-    pyplotMetrics.ion()
-    # pyplotMetrics.subplot(211)
-    ax[0].plot(history.history['loss'], label='train')
-    ax[0].plot(history.history['val_loss'], label='validation')
-    ax[0].set_ylabel("Loss", fontsize=10)
-    ax[0].legend(loc='upper right')
-    ax[0].grid(True)
-    # Root Mean Squared Error
-    ax[1].plot(history.history['root_mean_squared_error'], label='train')
-    ax[1].plot(history.history['val_root_mean_squared_error'], label='validation')
-    ax[1].legend(loc='upper right')
-    ax[1].set_ylabel("RMSE", fontsize=10)
-    ax[1].set_xlabel("Epochs", fontsize=10)
-    ax[1].grid(True)
-    pyplotMetrics.draw()
-    pyplotMetrics.pause(0.1)
-    if run != None:
-        run["evaluation/metrics"].upload(fig)
+    if history!= None:
+        import matplotlib.pyplot as pyplotMetrics
+        fig, ax = pyplotMetrics.subplots(2, 1)
+        pyplotMetrics.ion()
+        # pyplotMetrics.subplot(211)
+        ax[0].plot(history.history['loss'], label='train')
+        ax[0].plot(history.history['val_loss'], label='validation')
+        ax[0].set_ylabel("Loss", fontsize=10)
+        ax[0].legend(loc='upper right')
+        ax[0].grid(True)
+        # Root Mean Squared Error
+        ax[1].plot(history.history['root_mean_squared_error'], label='train')
+        ax[1].plot(history.history['val_root_mean_squared_error'], label='validation')
+        ax[1].legend(loc='upper right')
+        ax[1].set_ylabel("RMSE", fontsize=10)
+        ax[1].set_xlabel("Epochs", fontsize=10)
+        ax[1].grid(True)
+        pyplotMetrics.draw()
+        pyplotMetrics.pause(0.1)
+        if run != None:
+            run["evaluation/metrics"].upload(fig)
 
     # # R2
     # import sklearn.metrics as metrics
@@ -142,8 +150,8 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
     axs[0].plot(np.arange(range_history), np.array(y_test), label='Real', color='#1f77b4')  # blue
     axs[0].plot(np.arange(range_future), np.array(test_pred), label='Prediction LSTM', color='#ff7f0e',
                 alpha=0.8)
-    axs[0].plot(np.arange(range_future), s3, label='Prediction NoFilter', color='g',
-                alpha=0.7)
+    # axs[0].plot(np.arange(range_future), s3, label='Prediction NoFilter', color='g',
+    #             alpha=0.7)
     if n_future > 1:
         axs[0].plot(range_forecast, np.array(test_pred[SINGLEPOINT]), label='Forecasted with LSTM', color='red')
     else:
@@ -244,11 +252,14 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
     if run != None:
         run["evaluation/error"].upload(fig)
 
-    pyplotMetrics.show(block=True)
     pltCoere.show(block=True)
     pltError.show(block=True)
     plt.show(block=True)
+
+    if history != None:
+        pyplotMetrics.show(block=True)
+        pyplotMetrics.close()
+
     pltCoere.close()
     plt.close()
-    pyplotMetrics.close()
     pltError.close()
