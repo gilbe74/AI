@@ -39,7 +39,7 @@ def myReduceLrScaled(loss = 'val_loss', target = 1e-4, patience = 2):
         monitor=loss,
         # scale of a big factor to jump
         # directly on min_lr
-        factor=0.00001,
+        factor=0.2,
         # Wait for 2 epochs with bad metric
         patience=patience,
         # Display the callback

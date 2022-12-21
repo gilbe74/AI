@@ -26,26 +26,26 @@ run = neptune.init_run(
 )  # your credentials
 
 parameters = {
-    "time_window": 100,
+    "time_window": 40,
     "min_hidden_layers": 2,
     "max_hidden_layers": 2,
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 7e-6,
-    "learning_rate_tg": 6e-7,
-    "n_epochs": 70,
+    "learning_rate": 7.2e-6,
+    "learning_rate_tg": 7e-7,
+    "n_epochs": 85,
     'dropout': 0,
     "label": 'Pitch',
     "val_split": 0,
-    "max_trials": 9,
-    "patience": 5,
+    "max_trials": 4,
+    "patience": 7,
     "filter_in": 'none',  # kalman wiener simple none
     "filter_out": 'none',  # kalman wiener simple none
     "optimizer": 'adam',  # adam
     "activation": 'tanh',  # tanh or relu or elu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer
-    "loss_function": 'mean_absolute_error',  # huber_loss or mean_squared_error or log_cosh or mean_absolute_error
-    "loss_metrics": 'mean_absolute_error' #val_loss or mean_absolute_error
+    "loss_function": 'huber_loss',  # huber_loss or mean_squared_error or log_cosh or mean_absolute_error
+    "loss_metrics": 'val_loss' #val_loss or mean_absolute_error
 }
 
 ut.set_seed()
@@ -66,7 +66,7 @@ n_features = X_train.shape[2]
 # Number of output timestamps
 n_future = y_train.shape[1]
 
-DEFAULT_RETURN = 0.4
+DEFAULT_RETURN = 0.3
 
 
 def objective(trial):
@@ -77,10 +77,10 @@ def objective(trial):
     # else:
     #     n_layers = parameters['max_hidden_layers']
 
-    # l1 = trial.suggest_categorical("kernel_regularizer_l1", [0.0, 0.01])
-    # l2 = trial.suggest_categorical("kernel_regularizer_l2", [0.0, 0.01])
-    l1 = 0.0
-    l2 = 0.0
+    l1 = trial.suggest_categorical("kernel_regularizer_l1", [0.0, 0.01])
+    l2 = trial.suggest_categorical("kernel_regularizer_l2", [0.0, 0.01])
+    # l1 = 0.0
+    # l2 = 0.0
 
     #batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
     batch_size = 64#trial.suggest_int("batchsize", 32, 128, step=32, log=False)
@@ -140,9 +140,9 @@ def objective(trial):
 
     # -------------------------------- LEARNING RATE -----------------------------
     # lr = 0.0001 #default
-    # lr = parameters['learning_rate']
-    lr = trial.suggest_float('learning_rate', 7e-6, 1e-3, log=True)
-    # lr = trial.suggest_categorical("learning_rate", [7e-6, 8e-6])
+    lr = parameters['learning_rate']
+    # lr = trial.suggest_float('learning_rate', 6e-6, 9e-6, log=True)
+    # lr = trial.suggest_categorical("learning_rate", [6e-6, 8e-6])
 
     opti = ut.get_optimizer(optimizer=parameters['optimizer'],
                             learning_rate=lr)
@@ -159,7 +159,7 @@ def objective(trial):
                                 run=run,
                                 opti=model.optimizer,
                                 target=parameters['learning_rate_tg'],
-                                patience=2,
+                                patience=3,
                                 loss=parameters['loss_metrics'])
 
     my_callbacks.append(TFKerasPruningCallback(trial,parameters['loss_metrics']))
@@ -176,12 +176,13 @@ def objective(trial):
             callbacks=my_callbacks
         )
     except:
+
         print("An exception occurred on Model Fit")
         return DEFAULT_RETURN
 
     # Evaluate the model accuracy on the validation set.
     score = model.evaluate(X_test, y_test, verbose=1)
-    return score[2] #3 MSE 2 MAE
+    return score[3] #3 MSE 2 MAE
     # return ut.model_performance(model)  # score[1]
 
 

@@ -29,28 +29,28 @@ NEPTUNE_TOKEN = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJ
 
 parameters = {
     "debug": False,
-    "time_window": 40,
+    "time_window": 120,
     "layers": [384,128],
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 7.2e-6,#7.5e-6
-    "learning_rate_tg": 7e-7,
+    "learning_rate": 7.2e-5,#7.5e-6
+    "learning_rate_tg": 1e-8,
     "l1": 0.0,
     "l2": 0.0,
     "batch_size": 64,
     "n_epochs": 80,
     'dropout': 0,
     "label": 'Pitch',
-    "patience": 6,
-    "filter_in": 'none',  # kalman wiener simple none
+    "patience": 13,
+    "filter_in": 'wiener',  # kalman wiener simple none
     "filter_out": 'none',  # kalman wiener simple none
     "optimizer": 'adam',  # adam
     "activation": 'tanh', # tanh or relu or elu
     "scaler": 'Standard',  # Standard or MinMaxScaler or Normalizer or Robust or MaxAbsScaler
-    "loss_function": 'log_cosh',  # huber_loss or mean_squared_error or log_cosh or mean_absolute_error or mse
+    "loss_function": 'huber_loss',  # huber_loss or mean_squared_error or log_cosh or mean_absolute_error or mse
     "loss_metrics": 'val_loss' #mean_squared_error  mean_absolute_error val_loss
 }
-tags = ['LSTM_WS', 'TW=100', "ScalerFull", "CHECK"]
+tags = ['LSTM_WS', 'TW=120', "Best"]
 
 ut.set_seed()
 
@@ -112,7 +112,7 @@ my_callbacks = cb.callbacks(neptune=False,
                             run = run,
                             opti = model.optimizer,
                             target= parameters['learning_rate_tg'],
-                            patience = 3,
+                            patience = 4,
                             loss=parameters['loss_metrics'])
 def myNeptuneCallback(run):
     neptune_cbk = NeptuneCallback(

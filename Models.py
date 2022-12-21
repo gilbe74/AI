@@ -166,6 +166,28 @@ def create_uncompiled_model_ReturnState_ReturnSeq_2Layers(n_timestamps, n_future
     tmp_model = Model(input, output, name='model_LSTM_return_state')
     return tmp_model
 
+def create_uncompiled_model_Gillo(n_timestamps, n_future, n_features, layer_units, activation, dropout = 0.0):
+    input = tf.keras.layers.Input(shape=(n_timestamps, n_features))
+
+    lstm1 = LSTM(layer_units, return_sequences=True, return_state=True,activation=activation)
+    all_state_h, state_h, state_c = lstm1(input)
+    states = [state_h, state_c]
+
+    lstm2 = LSTM(layer_units, return_sequences=False, activation=activation)
+    all_state_h = lstm2(all_state_h, initial_state=states)
+
+    drop_layer = Dropout(dropout)
+    state_drop = drop_layer(all_state_h)
+
+    dense_last = Dense(n_features+1, activation='linear')
+    output_dense = dense_last(state_drop)
+
+    dense = Dense(n_future, activation='linear')
+    output = dense(output_dense)
+
+    tmp_model = Model(input, output, name='model_LSTM_return_state_dense')
+    return tmp_model
+
 def create_uncompiled_model_StackedMulti(n_timestamps, n_future, n_features, layer_units, activation):
     tmp_model = tf.keras.models.Sequential()
     tmp_model.add(LSTM(layer_units, activation=activation, return_sequences=True, input_shape=(n_timestamps, n_features)))
