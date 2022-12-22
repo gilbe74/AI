@@ -169,7 +169,7 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
     markerline, stemlines, baseline = pltCoere.stem(x, delta_df, '-', markerfmt=' ')
     pltCoere.setp(baseline, color='r', linewidth=2)
     SENSOR_ERROR = (y_test.max() + abs(y_test.min())) * SENSOR_ERROR / 2
-    axs[1].axhspan(SENSOR_ERROR,-SENSOR_ERROR,alpha=.4)
+    axs[1].axhspan(SENSOR_ERROR,-SENSOR_ERROR,alpha=.3)
     # axs[1].axhline(SENSOR_ERROR, color="red", linewidth=0.5)
     # axs[1].axhline(-SENSOR_ERROR, color="red", linewidth=0.5)
     axs[1].grid(True)

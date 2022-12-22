@@ -33,7 +33,7 @@ parameters = {
     "layers": [384,128],
     "future_step": 1,
     "sampling": 1,
-    "learning_rate": 7.2e-5,#7.5e-6
+    "learning_rate": 7.2e-6,#7.5e-6
     "learning_rate_tg": 1e-8,
     "l1": 0.0,
     "l2": 0.0,
@@ -50,7 +50,7 @@ parameters = {
     "loss_function": 'huber_loss',  # huber_loss or mean_squared_error or log_cosh or mean_absolute_error or mse
     "loss_metrics": 'val_loss' #mean_squared_error  mean_absolute_error val_loss
 }
-tags = ['LSTM_WS', 'TW=120', "Best"]
+tags = ['LSTM_WS', 'TW=120', "BEST -W25"]
 
 ut.set_seed()
 
@@ -112,7 +112,7 @@ my_callbacks = cb.callbacks(neptune=False,
                             run = run,
                             opti = model.optimizer,
                             target= parameters['learning_rate_tg'],
-                            patience = 4,
+                            patience = 3,
                             loss=parameters['loss_metrics'])
 def myNeptuneCallback(run):
     neptune_cbk = NeptuneCallback(

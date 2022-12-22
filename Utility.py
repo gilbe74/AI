@@ -151,14 +151,14 @@ def simpleFilterSerie(x, error = 0.02):
     x = pd.DataFrame(new_array)
     return x
 
-def wienerFilterDataframe(x, window=11):
+def wienerFilterDataframe(x, window=20):
     from scipy.signal import wiener
     for i, column in enumerate(x.columns):
         new_array = wiener(x[column], (window))
         x[column] = pd.DataFrame(new_array)
     return x
 
-def wienerFilterSeries(x, window=11):
+def wienerFilterSeries(x, window=20):
     from scipy.signal import wiener
     new_array = wiener(x,(window))
     x = pd.DataFrame(new_array)
