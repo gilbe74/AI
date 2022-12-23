@@ -242,7 +242,7 @@ def scalingData(training, testing, scalingAlgorithm = 'Standard'):
 
     return X_train, X_test
 
-def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pitch', printLabel = False, filterLabel = False, winsorizeFactor = 0):
+def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pitch', printLabel = False, filterLabel = False, winsorizeFactor = 0, trim = False):
     import DataRetrive as es
     data = es.retriveDataSet(reload)
 
@@ -255,7 +255,13 @@ def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pit
 
     # ['Datetime','SinkMin_AP','YawRate','Bs','Heel','Pitch', 'Lwy', 'Tws']
     data = data.drop(['Datetime', 'Bs', 'YawRate', 'Heel', 'Lwy', 'Tws', 'SinkMin_AP'], axis=1)
+
+    if trim==True:
+        labelMean = data[labelName].mean()
+        data.loc[data['armDown'] == 1, labelName] = labelMean
+
     data.dropna(inplace=True)
+    data.drop(data.tail(5000).index, inplace=True)
 
     # if parameters['sampling'] > 1:
     #     data = data.rolling(parameters['sampling']).mean()
@@ -272,7 +278,7 @@ def clueanUpData(reload = False, filter = None, bestFeature = 0, labelName ='Pit
     # get the index of the last racing day to be used as TestSet
     itemindex = np.where(zi == 6)
     test_index = itemindex[0][0]
-    test_index += 25000
+    test_index += 25000 #25000
 
     # remove from the DataFrame the colum of the label
     clean_data = data.drop(labelName, axis=1)

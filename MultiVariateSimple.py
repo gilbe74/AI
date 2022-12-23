@@ -34,14 +34,14 @@ parameters = {
     "future_step": 1,
     "sampling": 1,
     "learning_rate": 7.2e-6,#7.5e-6
-    "learning_rate_tg": 1e-8,
+    "learning_rate_tg": 5e-9,
     "l1": 0.0,
     "l2": 0.0,
     "batch_size": 64,
     "n_epochs": 80,
     'dropout': 0,
     "label": 'Pitch',
-    "patience": 13,
+    "patience": 15,
     "filter_in": 'wiener',  # kalman wiener simple none
     "filter_out": 'none',  # kalman wiener simple none
     "optimizer": 'adam',  # adam
@@ -50,7 +50,7 @@ parameters = {
     "loss_function": 'huber_loss',  # huber_loss or mean_squared_error or log_cosh or mean_absolute_error or mse
     "loss_metrics": 'val_loss' #mean_squared_error  mean_absolute_error val_loss
 }
-tags = ['LSTM_WS', 'TW=120', "BEST -W25"]
+tags = ['LSTM_WS', 'TW=40', "BEST -W20", "Cut", "ExMan"]
 
 ut.set_seed()
 

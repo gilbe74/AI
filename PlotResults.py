@@ -254,6 +254,9 @@ def PlotResult(model, X, y, history, run=None, batch_size = 64, n_future = 1, sa
     if run != None:
         run["evaluation/error"].upload(fig)
 
+    if run != None:
+        run.stop()
+
     pltCoere.show(block=True)
     pltError.show(block=True)
     plt.show(block=True)

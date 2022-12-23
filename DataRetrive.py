@@ -144,14 +144,14 @@ def isTowing(df):
 
 
 def isPortTack(df):
-    if (df['FCS_StbdCant_Ang'] < 50):
+    if (df['FCS_StbdCant_Ang'] < 71):
         return 1
     else:
         return 0
 
 
 def isStbdTack(df):
-    if (df['FCS_PortCant_Ang'] < 50):
+    if (df['FCS_PortCant_Ang'] < 71):
         return 1
     else:
         return 0
@@ -174,7 +174,7 @@ def setFCS(df, label):
     df[label] = np.select(conditionsStbd, values)
     return df
 
-FILE_NAME = "full_file_sailing_only.pkl" #full_file_sailing.pkl
+FILE_NAME = "full_file_sailing_noman.pkl" #full_file_sailing.pkl
 
 def saveDataSet(dataSet):
     dataSet.to_pickle(FILE_NAME)
